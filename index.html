@@ -552,7 +552,7 @@ async function runUpdate() {
   if (!confirm('Install the update now? Media Sorter restarts; your library and settings are kept.')) return;
   toast('Updating…');
   try {
-    const r = await api('/api/update', {});
+    const r = await api('/api/upgrade', {});
     document.body.replaceChildren(h('p', { style: 'padding:40px', role: 'status' }, `Updated from ${r.from} to ${r.to}. Restarting…`));
     for (let i = 0; i < 40; i++) { await new Promise(ok => setTimeout(ok, 1000)); try { if ((await api('/api/stats')).version === r.to) break; } catch (e) {} }
     location.reload();

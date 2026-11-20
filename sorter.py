@@ -998,7 +998,7 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/check":
                 threading.Thread(target=check, daemon=True).start()
                 out = {"started": True}
-            elif path == "/api/update":
+            elif path == "/api/upgrade":
                 import update as updater
                 out = updater.apply(b.get("zip") or None)
                 self.send_json(out)
