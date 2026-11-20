@@ -42,9 +42,9 @@ def installed():
 
 def latest():
     """The newest published version number, or None when offline."""
-    f = Path(tempfile.gettempdir()) / "media-sorter-latest.txt"
     try:
-        v = download(f"https://raw.githubusercontent.com/{REPO}/main/VERSION", f, timeout=15).read_text().strip()
+        with tempfile.TemporaryDirectory() as d:  # a private, uniquely named folder: nothing else can swap the file
+            v = download(f"https://raw.githubusercontent.com/{REPO}/main/VERSION", Path(d) / "v", timeout=15).read_text().strip()
         return v if 0 < len(v) < 20 and v[0].isdigit() else None
     except (OSError, ValueError):
         return None
@@ -78,9 +78,8 @@ def apply(source=None):
     if source:
         data = Path(source).read_bytes()
     else:
-        f = download(f"https://github.com/{REPO}/archive/refs/heads/main.zip", Path(tempfile.gettempdir()) / "media-sorter-update.zip", 600)
-        data = f.read_bytes()
-        f.unlink()
+        with tempfile.TemporaryDirectory() as d:  # private folder, so the download cannot be swapped before it is read
+            data = download(f"https://github.com/{REPO}/archive/refs/heads/main.zip", Path(d) / "update.zip", 600).read_bytes()
     z = zipfile.ZipFile(io.BytesIO(data))
     files = members(z)
     if "sorter.py" not in {rel for rel, _ in files}:
