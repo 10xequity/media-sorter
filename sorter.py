@@ -999,8 +999,8 @@ class Handler(BaseHTTPRequestHandler):
                 threading.Thread(target=check, daemon=True).start()
                 out = {"started": True}
             elif path == "/api/update":
-                import update
-                out = update.apply(b.get("zip") or None)
+                import update as updater
+                out = updater.apply(b.get("zip") or None)
                 self.send_json(out)
                 if out.get("updated"):  # start the new version, then step aside for it
                     subprocess.Popen([sys.executable, str(HERE / "sorter.py"), "--retry"], cwd=HERE, creationflags=NOWIN)
@@ -1026,6 +1026,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(out)
         except (ValueError, TypeError, OSError, sqlite3.Error, RuntimeError) as e:
             self.send_json({"error": str(e)}, 400)
+        except Exception as e:  # a bug: say so in the dashboard and record it in data/log.txt
+            import traceback
+            traceback.print_exc()
+            self.send_json({"error": f"Something went wrong ({type(e).__name__}). Details are in data/log.txt."}, 500)
 
 
 # ---------- self-check ----------
@@ -1141,8 +1145,8 @@ if __name__ == "__main__":
             threading.Thread(target=check, daemon=True).start()
 
             def newest():
-                import update
-                update_state["latest"] = update.latest()
+                import update as updater
+                update_state["latest"] = updater.latest()
             threading.Thread(target=newest, daemon=True).start()
             print(f"{time.strftime('%Y-%m-%d %H:%M')} Media Sorter running at {url}", flush=True)
             srv.serve_forever()
