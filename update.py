@@ -8,12 +8,31 @@ settings (config.json), library (data/), AI models, exports or installed Python.
 The dashboard's Update button calls apply(). The files replaced are backed up in data/backup/ first.
 Stands alone on purpose: it must not import sorter.py, which it replaces.
 """
-import io, json, shutil, subprocess, sys, time, urllib.request, zipfile
+import io, json, shutil, subprocess, sys, tempfile, time, urllib.request, zipfile
 from pathlib import Path
 
 HERE = Path(__file__).parent
 REPO = "10xequity/media-sorter"
 KEEP = {"config.json", "data", "models", "exports", "dist", "bin", ".venv", ".git", "_Review"}  # never overwritten
+
+
+NOWIN = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+
+
+def download(url, dest, timeout=7200):
+    """Save a URL to a file. Uses curl, which checks certificates the way the computer itself does;
+    Python's own check fails on some Windows PCs. Falls back to Python if curl is missing."""
+    dest = Path(dest)
+    tmp = dest.with_name(dest.name + ".part")
+    try:
+        ok = subprocess.run(["curl", "-fsSL", "--retry", "3", "-o", str(tmp), url], timeout=timeout,
+                            capture_output=True, creationflags=NOWIN).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        ok = False
+    if not ok:
+        urllib.request.urlretrieve(url, tmp)
+    tmp.replace(dest)
+    return dest
 
 
 def installed():
@@ -23,10 +42,11 @@ def installed():
 
 def latest():
     """The newest published version number, or None when offline."""
+    f = Path(tempfile.gettempdir()) / "media-sorter-latest.txt"
     try:
-        with urllib.request.urlopen(f"https://raw.githubusercontent.com/{REPO}/main/VERSION", timeout=6) as r:
-            return r.read(40).decode().strip()
-    except OSError:
+        v = download(f"https://raw.githubusercontent.com/{REPO}/main/VERSION", f, timeout=15).read_text().strip()
+        return v if 0 < len(v) < 20 and v[0].isdigit() else None
+    except (OSError, ValueError):
         return None
 
 
@@ -58,8 +78,9 @@ def apply(source=None):
     if source:
         data = Path(source).read_bytes()
     else:
-        with urllib.request.urlopen(f"https://github.com/{REPO}/archive/refs/heads/main.zip", timeout=60) as r:
-            data = r.read()
+        f = download(f"https://github.com/{REPO}/archive/refs/heads/main.zip", Path(tempfile.gettempdir()) / "media-sorter-update.zip", 600)
+        data = f.read_bytes()
+        f.unlink()
     z = zipfile.ZipFile(io.BytesIO(data))
     files = members(z)
     if "sorter.py" not in {rel for rel, _ in files}:
@@ -81,7 +102,7 @@ def apply(source=None):
             dest.chmod(0o755)
     if (HERE / "requirements.txt").read_bytes() != old_reqs:  # the new version needs different add-ons
         subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-r", str(HERE / "requirements.txt")], check=True,
-                       creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+                       creationflags=NOWIN)
     return {"updated": True, "from": old, "to": new, "files": len(files), "backup": str(backup)}
 
 

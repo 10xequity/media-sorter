@@ -11,7 +11,7 @@ Reads your files; writes only to data/ and models/ in this folder.
 
 Needs: onnxruntime, tokenizers, mediapipe (which brings OpenCV). Models download once into models/.
 """
-import json, os, sys, urllib.request
+import json, os, sys
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 
@@ -50,9 +50,8 @@ def fetch(name):
     if not p.exists():
         MODELS.mkdir(exist_ok=True)
         state["current"] = f"Downloading {name}"
-        tmp = p.with_suffix(".part")
-        urllib.request.urlretrieve(URLS[name], tmp)
-        tmp.replace(p)
+        from update import download  # curl first: Python's certificate check fails on some Windows PCs
+        download(URLS[name], p)
     return str(p)
 
 
