@@ -1,0 +1,36 @@
+{
+  "updated": "2026-11-15",
+  "source": "Starter set of common Reel formats. Not yet checked against what is trending this week.",
+  "templates": [
+    {
+      "id": "fast-cuts",
+      "name": "Fast cuts on the beat",
+      "about": "16 photos, hard cuts every 0.4 seconds. Pair with any upbeat trending audio.",
+      "photos": 16, "beats": [0.4], "zoom": 0, "fit": "crop", "order": "time"
+    },
+    {
+      "id": "build-burst",
+      "name": "Slow build, then burst",
+      "about": "Three slow shots to set the scene, then 14 rapid ones. Works with audio that has a drop.",
+      "photos": 17, "beats": [1.5, 1.5, 1.5, 0.22], "zoom": 0.08, "fit": "crop", "order": "time"
+    },
+    {
+      "id": "highlights",
+      "name": "Slow zoom highlights",
+      "about": "7 of the best shots, 2.2 seconds each with a slow zoom. The whole photo stays visible on a blurred backdrop.",
+      "photos": 7, "beats": [2.2], "zoom": 0.1, "fit": "blur", "order": "time"
+    },
+    {
+      "id": "countdown",
+      "name": "Top 5, best last",
+      "about": "Five shots, 2.4 seconds each, building to the best one. Add the 5 to 1 numbers yourself in Edits.",
+      "photos": 5, "beats": [2.4], "zoom": 0.06, "fit": "crop", "order": "best-last"
+    },
+    {
+      "id": "stop-motion",
+      "name": "Stop-motion sequence",
+      "about": "One burst of action played as a flip-book and looped three times. Uses a sequence, not single shots.",
+      "photos": 24, "beats": [0.12], "zoom": 0, "fit": "crop", "order": "sequence", "loops": 3
+    }
+  ]
+}

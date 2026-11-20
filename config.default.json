@@ -1,0 +1,163 @@
+{
+  "roots": [],
+  "review_dir": "",
+  "port": 8765,
+  "export_dir": "exports",
+  "allowed_hosts": [],
+  "workers": 6,
+  "min_photo_kb": 30,
+  "photo_ext": [
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".heic",
+    ".webp",
+    ".tif",
+    ".tiff",
+    ".bmp"
+  ],
+  "video_ext": [
+    ".mp4",
+    ".mov",
+    ".m4v",
+    ".avi",
+    ".wmv",
+    ".mkv",
+    ".mts",
+    ".webm"
+  ],
+  "categories": [
+    "Action",
+    "Team",
+    "Portrait",
+    "Crowd",
+    "B-roll",
+    "Graphics & trailers",
+    "Other"
+  ],
+  "burst_gap_seconds": 20,
+  "stop_motion_min_photos": 5,
+  "scoring": {
+    "dead_mean": 14,
+    "dead_std": 7,
+    "lap_lo": 1.3,
+    "lap_hi": 3.2,
+    "weights": {
+      "focus": 0.45,
+      "light": 0.2,
+      "contrast": 0.15,
+      "color": 0.1,
+      "res": 0.1
+    },
+    "cuts": [
+      0.35,
+      0.66,
+      0.76,
+      0.86
+    ],
+    "contrast_full": 75,
+    "color_full": 55
+  },
+  "near_dup_bits": 2,
+  "ai": {
+    "tag_min": 0.5,
+    "search_top": 200,
+    "posted_points": 40,
+    "tags": [
+      [
+        "hitting",
+        "a photo of a volleyball player jumping to spike the ball at the net",
+        "Action"
+      ],
+      [
+        "serving",
+        "a photo of a volleyball player serving the ball",
+        "Action"
+      ],
+      [
+        "setting",
+        "a photo of a volleyball setter setting the ball overhead with both hands",
+        "Action"
+      ],
+      [
+        "passing",
+        "a photo of a volleyball player passing or digging the ball with their forearms",
+        "Action"
+      ],
+      [
+        "blocking",
+        "a photo of volleyball players jumping with arms up to block at the net",
+        "Action"
+      ],
+      [
+        "celebrating",
+        "a photo of volleyball players celebrating, cheering and hugging",
+        "Team"
+      ],
+      [
+        "huddle",
+        "a photo of a volleyball team in a huddle or timeout with their coach",
+        "Team"
+      ],
+      [
+        "team photo",
+        "a posed group photo of a sports team",
+        "Team"
+      ],
+      [
+        "portrait",
+        "a posed portrait of one athlete looking at the camera",
+        "Portrait"
+      ],
+      [
+        "awards",
+        "a photo of athletes holding medals or a trophy",
+        "Team"
+      ],
+      [
+        "crowd",
+        "a photo of spectators and parents watching from the stands",
+        "Crowd"
+      ],
+      [
+        "venue",
+        "a photo of an empty gym, court, net or venue with no people as the subject",
+        "B-roll"
+      ],
+      [
+        "equipment",
+        "a close-up photo of volleyballs, shoes, bags or equipment",
+        "B-roll"
+      ],
+      [
+        "graphic",
+        "a graphic design, poster, logo or flyer with text",
+        "Graphics & trailers"
+      ]
+    ],
+    "places": [
+      [
+        "indoor",
+        "a photo taken inside a gym on an indoor court"
+      ],
+      [
+        "beach",
+        "a photo of beach volleyball on sand"
+      ],
+      [
+        "grass",
+        "a photo of volleyball played outdoors on grass"
+      ]
+    ],
+    "face_min": 0.8,
+    "face_px": 40,
+    "blink_px": 60,
+    "blink": 0.6,
+    "same_person": 0.6,
+    "person_px": 0.035,
+    "person_min_photos": 3,
+    "still": 0.4,
+    "dead_ratio": 0.35,
+    "dead_seconds": 4
+  }
+}

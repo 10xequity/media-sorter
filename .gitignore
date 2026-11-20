@@ -1,0 +1,10 @@
+data/
+__pycache__/
+models/
+exports/
+dist/
+bin/
+.venv/
+_Review/
+config.json
+.claude/
