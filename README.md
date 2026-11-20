@@ -1,6 +1,6 @@
 # Media Sorter
 
-**Version** 0.6.0 (installer, updates, drive-aware scanning) · **Date** 2026-11-20 · **Status** Working; AI tags are a first pass, remote access not yet switched on · **Supersedes** 0.5
+**Version** 0.7.0 (project panel, stacks, fast viewer) · **Date** 2026-11-20 · **Status** Working; AI tags are a first pass, remote access not yet switched on · **Supersedes** 0.6.0
 
 Scans photo and video folders, scores each file 0–5, finds exact duplicates, keeps
 shots taken together in one group, and gives you a dashboard to search, tag, rate,
@@ -23,6 +23,18 @@ The first "Run AI" downloads the AI models (about 1.7 GB).
 
 Use the Media Sorter shortcut (or `run.bat` / `run.command`). It runs in the background with no window and opens
 http://localhost:8765. "Quit app" in the dashboard stops it. Problems are written to `data/log.txt`.
+
+## The screen
+
+- **Left:** the library (sections, tags, people, events). Drag its bottom-right corner to widen it; long names wrap.
+- **Middle:** the photos. A sequence (burst) shows as one stacked tile with a count; select it to see every photo in it,
+  and use **Back** to return. Untick "Stack sequences" to see every file. Open a photo and it shows at once; the sharp
+  version follows, and the next photos are loaded ahead. Close with the X or Esc.
+- **Right: the Project.** Tick photos, or drag them over, from any folder or search; they stay collected while you
+  browse and after a restart. Drag (or use the arrows) to put them in order, then **Make a video** (it follows that
+  order and you can name the file) or **Export copies**.
+- **Random pick** adds a random handful from whatever is on screen to the project (optionally narrowed by a word such
+  as "hitting"), or shows one random shot at a time.
 
 ## Folders, drives and scanning
 

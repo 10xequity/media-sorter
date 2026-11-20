@@ -752,8 +752,16 @@ def listing(p):
         page = ids[int(p.get("offset", 0)):][:min(int(p.get("limit", 120)), 500)]
         got = {r["id"]: dict(r) for r in c.execute(f"SELECT {LIST_COLS} FROM media WHERE id {IN}", (json.dumps(page),))}
         return {"total": len(ids), "items": [got[i] for i in page], "smart": True}
-    rows = c.execute(f"SELECT {LIST_COLS} FROM media WHERE {w} ORDER BY {SORTS.get(p.get('sort'), SORTS['date'])} "
-                     "LIMIT ? OFFSET ?", (*a, min(int(p.get("limit", 120)), 500), int(p.get("offset", 0)))).fetchall()
+    order, page = SORTS.get(p.get("sort"), SORTS["date"]), (min(int(p.get("limit", 120)), 500), int(p.get("offset", 0)))
+    if p.get("stack") and not p.get("grp") and p.get("view", "active") == "active":
+        # One tile per sequence: its best shot, with how many are underneath.
+        g = "CASE WHEN grp IS NULL OR kind='video' THEN -id ELSE grp END"  # videos always get their own tile
+        total = c.execute(f"SELECT count(DISTINCT {g}) FROM media WHERE {w}", a).fetchone()[0]
+        rows = c.execute(f"SELECT * FROM (SELECT {LIST_COLS}, count(*) OVER (PARTITION BY {g}) AS stack, "
+                         f"row_number() OVER (PARTITION BY {g} ORDER BY {ES} DESC, taken, id) AS rn FROM media WHERE {w}) "
+                         f"WHERE rn=1 ORDER BY {order} LIMIT ? OFFSET ?", (*a, *page)).fetchall()
+        return {"total": total, "items": [dict(r) for r in rows]}
+    rows = c.execute(f"SELECT {LIST_COLS} FROM media WHERE {w} ORDER BY {order} LIMIT ? OFFSET ?", (*a, *page)).fetchall()
     return {"total": total, "items": [dict(r) for r in rows]}
 
 
@@ -811,6 +819,28 @@ def item(mid):
         f"SELECT id,kind,{ES} AS es FROM media WHERE status='active' AND id!=? AND (grp=? OR event=?) "
         f"ORDER BY (grp IS ?) DESC, {ES} DESC LIMIT 12", (mid, r["grp"] or -1, r["event"], r["grp"]))]
     return d
+
+
+def screen(row):
+    """A screen-size copy of a photo, made once and cached, so the viewer opens fast even from a slow external drive.
+    Returns None if the original cannot be read right now (drive unplugged) and no copy was made earlier."""
+    out = DATA / "views" / (row["tkey"] + ".jpg")
+    if not out.exists():
+        try:
+            im = Image.open(row["path"])
+            im.draft("RGB", (2200, 2200))
+            im = ImageOps.exif_transpose(im).convert("RGB")
+        except Exception:
+            im = grab(row["path"])
+            im = im and im.convert("RGB")
+        if not im:
+            return None
+        im.thumbnail((2000, 2000))
+        out.parent.mkdir(parents=True, exist_ok=True)
+        tmp = out.with_suffix(f".{threading.get_ident()}.tmp")
+        im.save(tmp, "JPEG", quality=86)
+        tmp.replace(out)
+    return out
 
 
 PLAYABLE = {"h264", "vp8", "vp9", "av1"}
@@ -926,6 +956,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(listing(p))
             if u.path == "/api/ids":
                 w, a = where(p)
+                if p.get("random"):  # a random handful from this view
+                    return self.send_json([r[0] for r in db().execute(
+                        f"SELECT id FROM media WHERE {w} ORDER BY random() LIMIT ?", (*a, min(int(p["random"]), 500)))])
                 ids = [r[0] for r in db().execute(f"SELECT id FROM media WHERE {w}", a)]
                 return self.send_json(look_alike(p, len(ids)) or ids)
             if u.path == "/api/stats":
@@ -944,8 +977,11 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/item":
                 d = item(int(p.get("id", 0)))
                 return self.send_json(d or {"error": "not found"}, 200 if d else 404)
-            if len(parts) == 2 and parts[0] in ("thumb", "file", "preview", "play") and parts[1].isdigit():
+            if len(parts) == 2 and parts[0] in ("thumb", "file", "preview", "play", "view") and parts[1].isdigit():
                 r = db().execute("SELECT path,tkey,dur,kind,codec FROM media WHERE id=?", (int(parts[1]),)).fetchone()
+                if r and parts[0] == "view":  # falls back to the small thumbnail when the drive is unplugged
+                    out = screen(r) if r["kind"] == "photo" else None
+                    return self.send_file(out or DATA / "thumbs" / (r["tkey"] + ".jpg"), "image/jpeg")
                 if r and r["kind"] == "video" and parts[0] == "play":
                     out = playable(r)
                     return self.send_file(out, mimetypes.guess_type(str(out))[0] or "video/mp4") if out \
@@ -987,7 +1023,7 @@ class Handler(BaseHTTPRequestHandler):
                 import reel
                 view = {k: str(v) for k, v in (b.get("view") or {}).items() if k in ("cat", "event", "grp", "tag", "q", "score")}
                 out = reel.make(str(b.get("template", "")), ids, view, "random" if b.get("pick") == "random" else "best",
-                                bool(b.get("fresh")), b.get("name", ""))
+                                bool(b.get("fresh")), b.get("name", ""), bool(b.get("ordered")))
             elif path == "/api/undo":
                 out = {"undone": undo()}
             elif path == "/api/scan":
@@ -1096,6 +1132,8 @@ def selftest():
     assert apply_edits(folder / "apply.json") == 2
     assert listing({"q": "from claude", "score": 2})["total"] == 1 and listing({"cat": "Action"})["total"] == 1
     assert undo() == "import from Claude" and listing({"q": "from claude"})["total"] == 0 and listing({"cat": "Action"})["total"] == 0
+    one = listing({"stack": "1"})
+    assert one["total"] <= listing({})["total"] and all(it["stack"] >= 1 for it in one["items"])
     scan()  # a second scan must not redo or duplicate anything
     assert c.execute("SELECT count(*) FROM media").fetchone()[0] == 4 and scan_state["total"] == 0
     c.close()

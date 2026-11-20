@@ -23,7 +23,7 @@ def templates():
     return json.loads((S.HERE / "templates.json").read_text(encoding="utf-8"))
 
 
-def choose(t, ids=None, view=None, pick="best", fresh=False):
+def choose(t, ids=None, view=None, pick="best", fresh=False, ordered=False):
     """The photos for a reel: the ones you selected, or the best / a random set from a view of the library."""
     c = S.db()
     usable = ("kind='photo' AND err IS NULL AND dup_of IS NULL "
@@ -44,6 +44,9 @@ def choose(t, ids=None, view=None, pick="best", fresh=False):
     order = "taken, path" if ids or t["order"] == "sequence" else "random()" if pick == "random" else f"{S.ES} DESC, random()"
     rows = c.execute(f"SELECT id, path, taken, {S.ES} AS es FROM media WHERE {w} AND kind='photo' ORDER BY {order} LIMIT ?",
                      (*a, 60 if ids else t["photos"])).fetchall()
+    if ids and ordered:  # the order you arranged them in the Project panel
+        pos = {i: n for n, i in enumerate(ids)}
+        return sorted(rows, key=lambda r: pos[r["id"]])
     key = (lambda r: (r["es"] or 0, r["taken"])) if t["order"] == "best-last" else (lambda r: (r["taken"], r["path"]))
     return sorted(rows, key=key)
 
@@ -117,11 +120,11 @@ def render(t, rows, name=""):
     return path if path.exists() and path.stat().st_size else None
 
 
-def make(template, ids=None, view=None, pick="best", fresh=False, name=""):
+def make(template, ids=None, view=None, pick="best", fresh=False, name="", ordered=False):
     t = next((x for x in templates()["templates"] if x["id"] == template), None)
     if not t:
         raise ValueError("unknown template")
-    rows = choose(t, ids, view, pick, fresh)
+    rows = choose(t, ids, view, pick, fresh, ordered)
     path = render(t, rows, name)
     if not path:
         raise ValueError("No usable photos here for this template. Try another section, or a different template.")
