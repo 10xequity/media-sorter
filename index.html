@@ -178,6 +178,26 @@ progress { width: 140px; height: 8px; accent-color: var(--ball); }
 #scanlog { width: 100%; border-collapse: collapse; font-size: 13px; }
 #scanlog td, #scanlog th { text-align: left; padding: 3px 10px 3px 0; color: var(--mute); font-weight: 400; }
 #scanlog th { font-weight: 600; }
+#llmbox { width: min(620px, 94vw); height: auto; max-height: 92vh; overflow-y: auto; padding: 22px; border: 1px solid var(--line);
+  border-radius: 12px; background: var(--panel); }
+#llmbox[open] { display: grid; grid-template-columns: 1fr; gap: 14px; }
+#llmbox::backdrop { background: rgba(5, 9, 13, .7); }
+#llmbox .opt { display: grid; grid-template-columns: 20px 1fr; gap: 2px 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
+#llmbox .opt:has(input:checked) { border-color: var(--ball); background: var(--raised); }
+#llmbox .opt small { grid-column: 2; color: var(--mute); }
+#llmbox label.line { display: grid; gap: 4px; color: var(--mute); }
+#events { width: min(980px, 96vw); height: auto; max-height: 92vh; overflow-y: auto; padding: 22px; border: 1px solid var(--line);
+  border-radius: 12px; background: var(--panel); }
+#events[open] { display: grid; grid-template-columns: 1fr; gap: 14px; }
+#events::backdrop { background: rgba(5, 9, 13, .7); }
+#evtable { width: 100%; border-collapse: collapse; }
+#evtable th { text-align: left; color: var(--mute); font-weight: 600; padding: 4px 10px 6px 0; position: sticky; top: -22px; background: var(--panel); }
+#evtable td { padding: 4px 10px 4px 0; border-top: 1px solid var(--line); vertical-align: middle; }
+#evtable select { width: 100%; max-width: 420px; }
+#evtable tr.same td { color: var(--mute); }
+.said { display: grid; gap: 2px; max-height: 220px; overflow-y: auto; }
+.said button { text-align: left; background: none; border: 0; padding: 3px 0; display: grid; grid-template-columns: 44px 1fr; gap: 8px; }
+.said button span:first-child { color: var(--net); font-variant-numeric: tabular-nums; }
 #toast { position: fixed; top: 16px; left: 50%; translate: -50% 0; z-index: 30; background: var(--chalk); color: #14202a; border-radius: 8px;
   padding: 8px 14px; display: none; gap: 12px; align-items: center; }
 #toast.on { display: flex; }
@@ -241,6 +261,8 @@ kbd { background: var(--raised); border-radius: 3px; padding: 0 5px; font: 12px 
       <span class="grp"><b>Library</b>
         <button id="scan" title="Read new and changed files in the chosen folders">Scan for new files</button>
         <button id="pick" title="Choose which folders and drives are scanned">Folders</button>
+        <button id="evnames" title="Name each day of photos after the event on your calendar">Event names</button>
+        <button id="llmset" title="Optional: connect a large AI model that writes captions and extra tags">AI services</button>
         <button id="airun" title="Tags, people, closed eyes and video dead time. Runs on this computer only.">Run AI</button></span>
       <span class="grp"><b>Create</b>
         <button id="rand" title="Pick photos at random from what is on screen">Random pick</button>
@@ -286,7 +308,8 @@ kbd { background: var(--raised); border-radius: 3px; padding: 0 5px; font: 12px 
   <div id="pbody">
     <div class="path" id="phelp">Tick photos or drag them here, from any folder or search. They stay collected while you browse. Drag to put them in order.</div>
     <ol id="plist"></ol>
-    <div class="row"><button class="primary" id="pmake">Make a video</button><button id="pexport">Export copies</button><button id="pclear">Clear</button></div>
+    <div class="row"><button class="primary" id="pmake">Make a video</button><button id="pexport">Export copies</button>
+      <button id="pdescribe" title="Have the connected AI service write a caption and tags for these photos">Describe with AI</button><button id="pclear">Clear</button></div>
   </div>
 </aside>
 <div id="busy" hidden></div>
@@ -304,6 +327,28 @@ kbd { background: var(--raised); border-radius: 3px; padding: 0 5px; font: 12px 
   <div class="row"><button class="primary" id="reelgo">Make the video</button><button id="reelclose">Close</button><span id="reelmsg" role="status" style="align-self:center;color:var(--mute)"></span></div>
   <div id="reelout"></div>
   <div class="path" id="reelnote"></div>
+</dialog>
+
+<dialog id="llmbox" aria-labelledby="llmtitle">
+  <h2 id="llmtitle">AI services</h2>
+  <div class="path">Optional. The built-in tags, faces and search already run on this computer for free. A connected service adds a written caption and extra tags for the photos you choose (“Describe with AI” in the Project panel).</div>
+  <div id="llmopts" style="display:grid;gap:6px" role="radiogroup" aria-label="AI service"></div>
+  <label class="line" id="llmkeyrow">Key for this service (a pay-per-use password from the company's developer site; a personal subscription login does not work)
+    <input id="llmkey" type="password" autocomplete="off" placeholder="Paste the key here"></label>
+  <label class="line">Model name<input id="llmmodel"></label>
+  <div class="path" id="llmnote"></div>
+  <div class="row"><button class="primary" id="llmsave">Save</button><button id="llmclose">Close</button>
+    <span id="llmmsg" role="status" style="align-self:center;color:var(--mute)"></span></div>
+</dialog>
+
+<dialog id="events" aria-labelledby="evtitle">
+  <h2 id="evtitle">Event names</h2>
+  <div class="path" id="evhelp"></div>
+  <div class="row" style="align-items:center"><label><input type="checkbox" id="evall"> Show days that are already named</label><span class="gap"></span>
+    <label class="chip" style="cursor:pointer;padding:6px 12px">Load a calendar file<input type="file" id="evfile" accept=".csv,text/csv" hidden></label></div>
+  <table id="evtable"></table>
+  <div class="row"><button class="primary" id="evapply">Apply these names</button><button id="evclose">Close</button>
+    <span id="evmsg" role="status" style="align-self:center;color:var(--mute)"></span></div>
 </dialog>
 
 <dialog id="randbox" aria-labelledby="randtitle">
@@ -487,7 +532,7 @@ async function refresh(reload = true) {
     : S.event || S.cat || S.tag || (S.kind === 'photo' ? 'Photos' : S.kind === 'video' ? 'Videos' : 'All media');
   $('back').hidden = Object.keys(HOME).every(k => S[k] === HOME[k]);
   $('stack').parentElement.hidden = !!S.grp || S.view !== 'active';
-  const run = st.scan.running ? st.scan : st.ai.running ? st.ai : null;
+  const run = st.scan.running ? st.scan : st.ai.running ? st.ai : st.llm.running ? st.llm : null;
   $('prog').hidden = !run; if (run) { $('prog').max = run.total || 1; $('prog').value = run.done || 0; }
   $('undo').disabled = !st.can_undo;
   $('scan').disabled = st.scan.running;
@@ -496,11 +541,13 @@ async function refresh(reload = true) {
   $('airun').textContent = st.ai_todo ? `Run AI on ${num(st.ai_todo)} new` : 'AI up to date';
   $('scanmsg').textContent = st.scan.running ? `Scanning ${num(st.scan.done)} of ${num(st.scan.total)} ${st.scan.current}`
     : st.ai.running ? `AI pass ${num(st.ai.done)} of ${num(st.ai.total)} ${st.ai.current}`
+    : st.llm.running ? `Describing photo ${num(st.llm.done + 1)} of ${num(st.llm.total)}`
+    : st.llm.error ? `Describing stopped: ${st.llm.error}`
     : st.ai.error ? `AI pass stopped: ${st.ai.error}. Details are in data/log.txt.`
     : st.ai.skipped ? `AI pass finished; ${num(st.ai.skipped)} steps were skipped on unreadable files (see data/log.txt).` : '';
   drawNotice(st);
-  if (busy || st.pending.running) setTimeout(() => refresh(false), 1500); else if (S.wasScanning) reload = true;
-  S.wasScanning = busy;
+  if (busy || st.pending.running || st.llm.running) setTimeout(() => refresh(false), 1500); else if (S.wasScanning) reload = true;
+  S.wasScanning = busy || st.llm.running;
   drawBar();
   if (reload) await load();
 }
@@ -537,7 +584,7 @@ function drawProject() {
   try { localStorage.setItem('project', JSON.stringify(ids.slice(0, 5000))); } catch (e) {}
   $('pcount').textContent = num(ids.length);
   $('phelp').hidden = ids.length > 0;
-  for (const b of ['pmake', 'pexport', 'pclear']) $(b).disabled = !ids.length;
+  for (const b of ['pmake', 'pexport', 'pclear', 'pdescribe']) $(b).disabled = !ids.length;
   $('plist').replaceChildren(...ids.slice(0, 200).map((id, n) => {
     const li = h('li', { draggable: true, 'data-id': id },
       h('span', {}, String(n + 1)), h('img', { src: `/thumb/${id}`, alt: `Item ${n + 1}`, loading: 'lazy' }),
@@ -563,6 +610,83 @@ $('ptoggle').onclick = () => { const shut = $('project').classList.toggle('shut'
 $('pclear').onclick = () => { if (confirm(`Empty the project? The ${S.sel.size} files themselves are not touched.`)) { S.sel.clear(); paintSel(); } };
 $('pmake').onclick = () => $('mkreel').click();
 $('pexport').onclick = () => $('export').click();
+
+// ----- optional AI service -----
+let LLM = null;
+const LLM_ABOUT = {
+  '': ['Off', 'Nothing is sent anywhere.'],
+  ollama: ['On this computer (Ollama)', 'Free and private; photos never leave this computer. Slower, and needs the free Ollama app installed.'],
+  claude: ['Claude (Anthropic)', 'Photos you choose are sent to Anthropic. Billed per photo to the key\'s account.'],
+  openai: ['ChatGPT (OpenAI)', 'Photos you choose are sent to OpenAI. Billed per photo to the key\'s account.'],
+  gemini: ['Gemini (Google)', 'Photos you choose are sent to Google. Billed per photo to the key\'s account.'] };
+function drawLlm() {
+  const p = document.querySelector('input[name=llmp]:checked')?.value ?? LLM.provider;
+  $('llmkeyrow').hidden = !p || p === 'ollama';
+  $('llmkey').placeholder = LLM.has_key && p === LLM.provider ? 'A key is saved. Leave empty to keep it.' : 'Paste the key here';
+  $('llmmodel').parentElement.hidden = !p;
+  $('llmnote').textContent = p !== 'ollama' ? ''
+    : LLM.ollama == null ? 'Ollama is not running on this computer. Install it from ollama.com, start it, then come back here.'
+    : LLM.ollama.includes($('llmmodel').value) ? 'Ollama is running and has this model.'
+    : `Ollama is running but does not have this model yet. In the Ollama app, download “${$('llmmodel').value}” (about 1.5 GB for the suggested one).`;
+}
+$('llmset').onclick = async () => {
+  try { LLM = await api('/api/llm'); } catch (e) { return toast(e.message); }
+  $('llmopts').replaceChildren(...Object.entries(LLM_ABOUT).map(([id, [name, about]]) => h('label', { class: 'opt' },
+    h('input', { type: 'radio', name: 'llmp', value: id, checked: id === LLM.provider,
+      onchange: () => { $('llmmodel').value = LLM.defaults[id] || ''; drawLlm(); } }), h('span', {}, name), h('small', {}, about))));
+  $('llmmodel').value = LLM.model; $('llmkey').value = ''; $('llmmsg').textContent = ''; drawLlm(); $('llmbox').showModal();
+};
+$('llmmodel').oninput = drawLlm;
+$('llmclose').onclick = () => $('llmbox').close();
+$('llmsave').onclick = async () => {
+  try { LLM = await api('/api/llm', { provider: document.querySelector('input[name=llmp]:checked').value, model: $('llmmodel').value, key: $('llmkey').value });
+    $('llmkey').value = ''; $('llmmsg').textContent = 'Saved.'; drawLlm(); }
+  catch (e) { $('llmmsg').textContent = e.message; }
+};
+$('pdescribe').onclick = async () => {
+  try {
+    LLM = await api('/api/llm');
+    if (!LLM.provider) { toast('Choose an AI service first.'); return $('llmset').click(); }
+    const n = Math.min(S.sel.size, 500), cloud = LLM.provider !== 'ollama';
+    if (!confirm(`Describe up to ${n} photos in the project with ${LLM.names[LLM.provider]}?\n\n` +
+      (cloud ? 'The photos will be sent over the internet to that company, and each one is billed to your key.' : 'Nothing leaves this computer. This can take a while.'))) return;
+    await api('/api/describe', { ids: [...S.sel] }); toast('Describing photos…'); refresh(false);
+  } catch (e) { toast(e.message); }
+};
+
+// ----- event names from the calendar -----
+let EV = [];
+async function drawEvents() {
+  const p = await api('/api/events'); EV = p.days;
+  $('evhelp').textContent = p.have
+    ? 'Each row is one day of photos. The list offers the names your calendar has for that day, plus the name the photos carry now. Only the label inside this app changes: no file is renamed, and Undo reverses it. The date goes at the end of the name.'
+    : 'No calendar is loaded on this computer yet, so only the current names are offered. Use “Load a calendar file” to add events.csv.';
+  const rows = EV.map((d, i) => ({ d, i })).filter(x => $('evall').checked || !x.d.done);
+  $('evtable').replaceChildren(h('tr', {}, ...['Date', 'Files', 'Name now', 'Change to'].map(x => h('th', {}, x))),
+    ...(rows.length ? rows.map(({ d, i }) => {
+      const sel = h('select', { 'aria-label': `Name for ${d.date}`, 'data-i': i },
+        ...[...new Set([d.pick, d.current, ...d.options])].map(n => h('option', { value: n, selected: n === d.pick }, `${n} ${d.date}`)),
+        h('option', { value: '' }, 'Leave as it is'));
+      return h('tr', { class: d.done ? 'same' : '' }, h('td', {}, d.date), h('td', {}, num(d.files)), h('td', {}, d.event || 'none'), h('td', {}, sel));
+    }) : [h('tr', {}, h('td', { colspan: 4 }, 'Every day is already named this way.'))]));
+}
+$('evnames').onclick = async () => { $('evmsg').textContent = ''; $('events').showModal(); try { await drawEvents(); } catch (e) { $('evmsg').textContent = e.message; } };
+$('evall').onchange = () => drawEvents();
+$('evclose').onclick = () => $('events').close();
+$('evfile').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try { const r = await api('/api/calendar', { text: await f.text() }); $('evmsg').textContent = `Calendar loaded: ${num(r.days)} days with events.`; await drawEvents(); }
+  catch (err) { $('evmsg').textContent = err.message; }
+  e.target.value = '';
+};
+$('evapply').onclick = async () => {
+  const choices = [...document.querySelectorAll('#evtable select')].filter(s => s.value)
+    .map(s => ({ date: EV[s.dataset.i].date, event: EV[s.dataset.i].event, name: s.value }))
+    .filter(c => `${c.name} ${c.date}` !== c.event);
+  if (!choices.length) return $('evmsg').textContent = 'Nothing to change.';
+  try { const r = await api('/api/events', { choices }); $('events').close(); toast(`Named ${num(r.changed)} files across ${choices.length} days`, true); refresh(); }
+  catch (e) { $('evmsg').textContent = e.message; }
+};
 
 // ----- random pick -----
 $('rand').onclick = () => {
@@ -816,6 +940,11 @@ async function openViewer(i) {
         (d.dead.dead.length ? '. Select a stretch to jump to it.' : '')),
       h('div', { class: 'chips' }, ...d.dead.dead.slice(0, 40).map(([a, b]) => h('button', { class: 'chip',
         onclick: () => { const vid = stage.querySelector('video'); if (vid) vid.currentTime = a; } }, `${clock(a)} to ${clock(b)}`)))) : null,
+    d.caption ? h('div', {}, d.caption) : null,
+    d.said && d.said.length ? h('div', {}, h('div', { style: 'margin-bottom:6px' }, 'What is said. Select a line to jump to it.'),
+      h('div', { class: 'said' }, ...d.said.map(([a, , text]) => h('button', {
+        onclick: () => { const vid = stage.querySelector('video'); if (vid) { vid.currentTime = a; vid.play().catch(() => {}); } } },
+        h('span', {}, clock(a)), h('span', {}, text))))) : null,
     h('label', {}, 'Category', cat), h('label', {}, 'Event', ev),
     h('div', {}, h('div', { class: 'chips', style: 'margin-bottom:8px' }, ...tags.map(t =>
       h('button', { class: 'chip', title: 'Remove this tag', 'aria-label': `Remove tag ${t}`, onclick: () => one('update', { remove: [t] }, 'Tag removed') }, t))), tagIn),

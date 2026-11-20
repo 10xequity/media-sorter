@@ -125,7 +125,7 @@ def retag(c):
     """Rebuild every AI tag from stored results. Cheap, so wording in config.json can be tuned and re-run."""
     ids, E = looks(c)
     tags, cats = [], []
-    for group in (A["tags"], A["places"]):
+    for group in (A["tags"], A["places"], *A.get("facets", [])):  # each group: the one best-fitting description wins
         if not ids:
             break
         T = np.stack([embed_text(g[1]) for g in group])
@@ -133,12 +133,26 @@ def retag(c):
         P = np.exp(z - z.max(1, keepdims=True))
         P /= P.sum(1, keepdims=True)
         for mid, i, p in zip(ids, P.argmax(1), P.max(1)):
-            if p >= A["tag_min"]:
+            if p >= A["tag_min"] and group[i][0]:  # a group may hold a "none of these" entry with an empty tag
                 tags.append((mid, group[i][0], "ai"))
                 if len(group[i]) > 2:
                     cats.append((group[i][2], mid))
+    # Extra labels, each judged on its own (a photo can show shoes AND a trophy): the label's description has to fit
+    # clearly better than every plain description of an ordinary photo.
+    if ids and A.get("labels"):
+        base = 100 * E @ np.stack([embed_text(t) for t in A["label_base"]]).T
+        for tag, text in A["labels"]:
+            z = np.column_stack([100 * E @ embed_text(text), base])
+            p = np.exp(z[:, 0] - z.max(1)) / np.exp(z - z.max(1, keepdims=True)).sum(1)
+            tags += [(mid, tag, "ai") for mid, pv in zip(ids, p) if pv >= A["label_min"]]
     for r in c.execute("SELECT DISTINCT media_id, person FROM faces WHERE person IS NOT NULL"):
         tags.append((r["media_id"], r["person"], "face"))
+    # How many people the photo is "of": counted from faces big enough to be the subject, not the background.
+    # (Asking the picture-matching model to count people was wrong too often.)
+    for r in c.execute("SELECT media_id, sum(w >= ?) AS n, count(*) AS every FROM faces GROUP BY media_id HAVING n > 0",
+                       (A["person_px"],)):
+        if r["n"] > 1 or r["every"] == 1:  # "individual" only when nobody else is in the picture at all
+            tags.append((r["media_id"], "individual" if r["n"] == 1 else "pair" if r["n"] == 2 else "group", "face"))
     for r in c.execute("SELECT DISTINCT media_id FROM faces WHERE blink >= ?", (A["blink"],)):
         tags.append((r["media_id"], "eyes closed", "face"))
     for r in c.execute("SELECT media_id, dead FROM ai WHERE dead IS NOT NULL"):
@@ -152,7 +166,27 @@ def retag(c):
         c.executemany("INSERT OR IGNORE INTO tags VALUES(?,?,?)", tags)
         # A category is only suggested where you have not set one; it never overwrites yours.
         c.executemany("UPDATE media SET category=? WHERE id=? AND category IS NULL", cats)
+        c.execute("INSERT OR REPLACE INTO meta VALUES('tagset', ?)", (tagset(),))
         c.commit()
+
+
+def tagset():
+    return json.dumps([A[k] for k in sorted(A) if k in ("tags", "places", "facets", "labels", "label_base", "tag_min", "label_min")])
+
+
+def retag_if_changed():
+    """After an update that changes the tag list, re-tag from stored results (no photos are re-read)."""
+    c = S.db()
+    was = c.execute("SELECT v FROM meta WHERE k='tagset'").fetchone()
+    if state["running"] or (was and was[0] == tagset()) or not c.execute("SELECT 1 FROM ai LIMIT 1").fetchone():
+        return
+    state.update(running=True, done=0, total=0, current="Updating tags", error="")
+    try:
+        retag(c)
+    except Exception as e:
+        state["error"] = f"{type(e).__name__}: {e}"
+    finally:
+        state.update(running=False, current="")
 
 
 def keypoints(im, size):
@@ -366,6 +400,38 @@ def dead_time(path):
             "dark_frac": round(float(dark.mean()), 3)}
 
 
+# ---------- videos: what is said ----------
+
+_whisper = None
+
+
+def whisper():
+    """The speech-to-text model (Whisper "base", about 145 MB, downloaded once). Runs on this computer only."""
+    global _whisper
+    if _whisper is None:
+        from faster_whisper import WhisperModel
+        from update import download
+        d = MODELS / "whisper-base"
+        d.mkdir(parents=True, exist_ok=True)
+        for f in ("config.json", "tokenizer.json", "vocabulary.txt", "model.bin"):
+            if not (d / f).exists():
+                state["current"] = "Downloading the speech model"
+                download(HF + "Systran/faster-whisper-base/resolve/main/" + f, d / f)
+        _whisper = WhisperModel(str(d), device="cpu", compute_type="int8")
+    return _whisper
+
+
+def transcribe(path):
+    """[[start, end, text]] for the speech in a video; [] when nobody is talking."""
+    raw = S.ffrun(["ffmpeg", "-v", "error", "-i", str(path), "-vn", "-ac", "1", "-ar", "16000", "-f", "f32le", "-"], timeout=3600)
+    audio = np.frombuffer(raw[:len(raw) // 4 * 4], dtype=np.float32)
+    if len(audio) < 16000:
+        return []
+    # ponytail: the voice filter skips crowd noise and music; without it Whisper invents sentences over gym noise.
+    segs, _ = whisper().transcribe(audio, vad_filter=True, condition_on_previous_text=False)
+    return [[round(s.start, 1), round(s.end, 1), s.text.strip()] for s in segs if s.no_speech_prob < 0.6 and s.text.strip()]
+
+
 # ---------- the pass itself ----------
 
 def run():
@@ -398,6 +464,18 @@ def run():
                     c.commit()
                 state["done"] += len(batch)
                 state["current"] = os.path.basename(batch[-1]["path"])
+        vids = c.execute("SELECT id, path FROM media WHERE status='active' AND err IS NULL AND kind='video' "
+                         "AND id NOT IN (SELECT media_id FROM transcripts) ORDER BY path").fetchall()
+        state["total"] += len(vids)
+        for r in vids:
+            state["current"] = "Listening to " + os.path.basename(r["path"])
+            segs = safe(transcribe, r["path"])
+            if segs is not None:  # a failure is retried next time; silence is recorded so it is not
+                with S.WLOCK:
+                    c.execute("INSERT OR REPLACE INTO transcripts VALUES(?,?,?)",
+                              (r["id"], " ".join(s[2] for s in segs), json.dumps(segs)))
+                    c.commit()
+            state["done"] += 1
         state["current"] = "Grouping faces and tagging"
         cluster(c)
         retag(c)

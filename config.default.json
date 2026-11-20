@@ -147,6 +147,14 @@
       [
         "grass",
         "a photo of volleyball played outdoors on grass"
+      ],
+      [
+        "indoors, not a gym",
+        "a photo taken inside a restaurant, bar, office or house"
+      ],
+      [
+        "outdoors, not a court",
+        "a photo taken outdoors at a park, street or landscape, away from any court"
       ]
     ],
     "face_min": 0.8,
@@ -158,6 +166,91 @@
     "person_min_photos": 3,
     "still": 0.4,
     "dead_ratio": 0.35,
-    "dead_seconds": 4
+    "dead_seconds": 4,
+    "label_min": 0.6,
+    "labels": [
+      [
+        "shoes and feet",
+        "a close-up photo of shoes, sneakers or feet"
+      ],
+      [
+        "jumping",
+        "a photo of an athlete high in the air in the middle of a jump"
+      ],
+      [
+        "ball in the air",
+        "a sports photo with a volleyball clearly visible in mid-air"
+      ],
+      [
+        "selfie",
+        "a selfie taken at arm's length"
+      ],
+      [
+        "kids",
+        "a photo of young children"
+      ],
+      [
+        "funny face",
+        "a photo of someone making a silly, funny face"
+      ],
+      [
+        "trophy or medal",
+        "a photo of people holding a trophy or wearing medals"
+      ],
+      [
+        "food and drink",
+        "a photo of food or drinks"
+      ],
+      [
+        "sunglasses",
+        "a photo of a person wearing sunglasses"
+      ]
+    ],
+    "facets": [
+      [
+        [
+          "action shot",
+          "a sports action photo of athletes in the middle of a play"
+        ],
+        [
+          "posed",
+          "a posed photo of people standing still and smiling at the camera"
+        ],
+        [
+          "candid",
+          "a candid photo of people on the sideline who are not posing and not playing"
+        ],
+        [
+          "",
+          "a photo with no people in it"
+        ]
+      ],
+      [
+        [
+          "",
+          "a photo of a volleyball game being played"
+        ],
+        [
+          "party",
+          "a photo of people at a party or social gathering with food, drinks or decorations"
+        ],
+        [
+          "friends",
+          "a casual photo of friends hanging out and laughing together away from the game"
+        ],
+        [
+          "",
+          "a photo of an empty place with no people"
+        ]
+      ]
+    ],
+    "label_base": [
+      "a photo",
+      "a photo of people",
+      "a photo of volleyball players",
+      "a photo of a volleyball game",
+      "a photo of people outdoors",
+      "a photo of people in a gym"
+    ]
   }
 }

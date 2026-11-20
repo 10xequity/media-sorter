@@ -8,7 +8,7 @@ Needs Python 3.12+, Pillow, numpy, and ffmpeg/ffprobe on PATH.
   python sorter.py --apply F  apply edits from a JSON file (the Claude round-trip; see README)
   python ai.py                the AI pass: tags, people, closed eyes, video dead time (see ai.py)
 """
-import argparse, ctypes, hashlib, io, json, math, mimetypes, os, re, shutil, sqlite3
+import argparse, csv, ctypes, hashlib, io, json, math, mimetypes, os, re, shutil, sqlite3
 import subprocess, sys, tempfile, threading, time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
@@ -21,9 +21,13 @@ from PIL import Image, ImageOps
 
 sys.modules.setdefault("sorter", sys.modules[__name__])  # ai.py imports this file by name, even when run directly
 HERE = Path(__file__).parent
-if not (HERE / "config.json").exists():  # new install or update: this computer's settings live in config.json,
-    shutil.copyfile(HERE / "config.default.json", HERE / "config.json")  # which updates never overwrite
-CFG = json.loads((HERE / "config.json").read_text(encoding="utf-8"))
+# Program settings (tags, scoring) come from config.default.json and arrive with updates. This computer's own
+# choices (which folders, the port) live in config.json, which updates never touch.
+LOCAL = ("roots", "review_dir", "port", "export_dir", "allowed_hosts", "workers", "llm")
+CFG = json.loads((HERE / "config.default.json").read_text(encoding="utf-8"))
+if (HERE / "config.json").exists():
+    mine = json.loads((HERE / "config.json").read_text(encoding="utf-8"))
+    CFG.update({k: mine[k] for k in LOCAL if k in mine})
 DATA = HERE / "data"
 VERSION = (HERE / "VERSION").read_text().strip() if (HERE / "VERSION").exists() else "dev"
 os.environ["PATH"] = str(HERE / "bin") + os.pathsep + os.environ.get("PATH", "")  # ffmpeg the installer put there
@@ -67,6 +71,9 @@ def db():
             CREATE TABLE IF NOT EXISTS ai(media_id INTEGER PRIMARY KEY, emb BLOB, dead TEXT);
             CREATE TABLE IF NOT EXISTS faces(id INTEGER PRIMARY KEY, media_id INTEGER, x REAL, y REAL, w REAL, h REAL,
               emb BLOB, blink REAL, person TEXT);
+            CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
+            CREATE TABLE IF NOT EXISTS captions(media_id INTEGER PRIMARY KEY, text TEXT, by TEXT);
+            CREATE TABLE IF NOT EXISTS transcripts(media_id INTEGER PRIMARY KEY, text TEXT, segs TEXT);
             CREATE TABLE IF NOT EXISTS roots(path TEXT PRIMARY KEY, serial TEXT, label TEXT);
             CREATE TABLE IF NOT EXISTS scans(id INTEGER PRIMARY KEY, at TEXT, secs REAL, folders TEXT,
               added INTEGER, changed INTEGER, missing INTEGER, errors INTEGER);
@@ -255,7 +262,7 @@ def drives():
 
 
 def save_cfg():
-    (HERE / "config.json").write_text(json.dumps(CFG, indent=2), encoding="utf-8")
+    (HERE / "config.json").write_text(json.dumps({k: CFG[k] for k in LOCAL if k in CFG}, indent=2), encoding="utf-8")
 
 
 def under(path, folder):
@@ -559,6 +566,60 @@ def apply_edits(path):
     return len(items)
 
 
+# ---------- event names from a calendar (data/events.csv: date,name) ----------
+
+PLACEHOLDER = re.compile(r"^(open|closed|tbd|hold|drop[ -]?in.*|volleyball drop[ -]?in.*)$|\?$", re.I)
+
+
+def calendar():
+    """{date: [names]} from data/events.csv, the list exported from the Operations sheets."""
+    out, f = {}, DATA / "events.csv"
+    if f.exists():
+        with open(f, encoding="utf-8-sig", newline="") as fh:
+            for r in csv.DictReader(fh):
+                d, n = (r.get("date") or "").strip(), (r.get("name") or "").strip()
+                if re.fullmatch(r"\d{4}-\d\d-\d\d", d) and n and n not in out.setdefault(d, []):
+                    out[d].append(n)
+    return out
+
+
+def words(text):
+    return {w for w in re.findall(r"[a-z]+|\d+", text.lower()) if len(w) > 1 and w not in STOP_WORDS and not re.fullmatch(r"20\d\d|\d\d", w)}
+
+
+def event_plan():
+    """For every day of photos: the names the calendar has for that day, beside the name the photos carry now.
+    A calendar name is only suggested when it shares a word with the current name; otherwise the current one stays."""
+    cal, out = calendar(), []
+    for r in db().execute("SELECT substr(taken,1,10) AS d, event, count(*) AS n FROM media WHERE status='active' "
+                          "GROUP BY 1, 2 ORDER BY 1 DESC"):
+        d, ev = r["d"], r["event"] or ""
+        plain = re.sub(r"^\d{4}-\d\d-\d\d\s+|\s+\d{4}-\d\d-\d\d$", "", ev).strip() or "Untitled"
+        names = [n for n in cal.get(d, []) if not PLACEHOLDER.search(n)]
+        best = max(names, key=lambda n: len(words(n) & words(plain)), default=None)
+        pick = best if best and words(best) & words(plain) else plain
+        out.append({"date": d, "event": ev, "files": r["n"], "current": plain, "options": names, "pick": pick,
+                    "done": ev == f"{plain} {d}"})
+    return {"have": bool(cal), "days": out}
+
+
+def apply_events(choices):
+    """Label photos "<name> <date>" for each chosen day. Labels only: no file is renamed. One Undo reverses it."""
+    c, jobs = db(), []
+    for ch in choices:
+        name = re.sub(r"\s+", " ", str(ch.get("name", ""))).strip()[:80]
+        ids = [r[0] for r in c.execute("SELECT id FROM media WHERE status='active' AND substr(taken,1,10)=? AND event IS ?",
+                                       (str(ch.get("date")), ch.get("event")))]
+        if name and ids:
+            jobs.append((ids, f"{name} {ch['date']}"))
+    with WLOCK:
+        snapshot(c, [i for ids, _ in jobs for i in ids], "event names")
+        c.commit()
+        for ids, label in jobs:
+            update(ids, {"event": label}, snap=False)
+    return sum(len(ids) for ids, _ in jobs)
+
+
 def cut(src, keep, out):
     """Write a new video containing only the kept stretches. The original is never touched."""
     sel = "+".join(f"between(t,{a:.2f},{b:.2f})" for a, b in keep)
@@ -721,8 +782,10 @@ def where(p):
             a.append(p[key])
     for tok in p.get("q", "").lower().split()[:8]:
         w.append("(lower(path) LIKE ? OR lower(event) LIKE ? OR lower(category) LIKE ? "
-                 "OR id IN (SELECT media_id FROM tags WHERE tag LIKE ?))")
-        a += [f"%{tok}%"] * 4
+                 "OR id IN (SELECT media_id FROM tags WHERE tag LIKE ?) "
+                 "OR id IN (SELECT media_id FROM transcripts WHERE lower(text) LIKE ?) "
+                 "OR id IN (SELECT media_id FROM captions WHERE lower(text) LIKE ?))")
+        a += [f"%{tok}%"] * 6
     return " AND ".join(w), a
 
 
@@ -793,12 +856,14 @@ def stats():
         "posted": pairs("SELECT tag, count(*) FROM tags JOIN media ON id=media_id AND status='active' "
                         "WHERE src='posted' GROUP BY 1 ORDER BY tag"),
         "eyes": one("SELECT count(*) FROM tags JOIN media ON id=media_id AND status='active' WHERE tag='eyes closed'"),
-        "ai_todo": one(f"SELECT count(*) {act} AND err IS NULL AND id NOT IN (SELECT media_id FROM ai)"),
+        "ai_todo": one(f"SELECT count(*) {act} AND err IS NULL AND (id NOT IN (SELECT media_id FROM ai) "
+                       "OR (kind='video' AND id NOT IN (SELECT media_id FROM transcripts)))"),
         "ai": sys.modules["ai"].state if "ai" in sys.modules else {"running": False},
         "all_categories": CFG["categories"],
         "can_undo": one("SELECT count(*) FROM actions"),
         "scan": scan_state,
         "pending": pending,
+        "llm": sys.modules["llm"].state if "llm" in sys.modules else {"running": False},
         "roots": root_status(),
         "version": VERSION,
         "latest": update_state["latest"],
@@ -814,6 +879,10 @@ def item(mid):
     d["faces"] = [dict(x) for x in c.execute("SELECT person, blink FROM faces WHERE media_id=?", (mid,))]
     dead = c.execute("SELECT dead FROM ai WHERE media_id=?", (mid,)).fetchone()
     d["dead"] = json.loads(dead[0]) if dead and dead[0] else None
+    cap = c.execute("SELECT text FROM captions WHERE media_id=?", (mid,)).fetchone()
+    d["caption"] = cap[0] if cap else ""
+    said = c.execute("SELECT segs FROM transcripts WHERE media_id=?", (mid,)).fetchone()
+    d["said"] = json.loads(said[0]) if said and said[0] else []
     # "Suggested": the rest of its sequence first, then the best-scoring shots from the same event
     d["related"] = [dict(x) for x in c.execute(
         f"SELECT id,kind,{ES} AS es FROM media WHERE status='active' AND id!=? AND (grp=? OR event=?) "
@@ -965,6 +1034,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(stats())
             if u.path == "/api/tree":
                 return self.send_json(tree(p.get("path", "")))
+            if u.path == "/api/events":
+                return self.send_json(event_plan())
+            if u.path == "/api/llm":
+                import llm
+                return self.send_json(llm.status())
             if u.path == "/api/scans":
                 return self.send_json([dict(r) for r in db().execute("SELECT * FROM scans ORDER BY id DESC LIMIT 30")])
             if u.path == "/api/templates":
@@ -1029,6 +1103,22 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/scan":
                 threading.Thread(target=scan, daemon=True).start()
                 out = {"started": True}
+            elif path == "/api/events":
+                out = {"changed": apply_events(b.get("choices", []))}
+            elif path == "/api/llm":
+                import llm
+                out = llm.save(str(b.get("provider", "")), b.get("model", ""), b.get("key", ""))
+            elif path == "/api/describe":
+                import llm
+                threading.Thread(target=llm.describe, args=(ids,), daemon=True).start()
+                out = {"started": True}
+            elif path == "/api/calendar":  # bring a calendar file onto this computer
+                text = str(b.get("text", ""))
+                if not re.match(r"\ufeff?date,name\r?\n", text):
+                    raise ValueError('That is not an events file. It should start with the line "date,name".')
+                DATA.mkdir(exist_ok=True)
+                (DATA / "events.csv").write_text(text.lstrip("\ufeff"), encoding="utf-8", newline="")
+                out = {"days": len(calendar())}
             elif path == "/api/roots":
                 out = {"roots": set_roots(b.get("roots", []))}
             elif path == "/api/check":
@@ -1132,6 +1222,14 @@ def selftest():
     assert apply_edits(folder / "apply.json") == 2
     assert listing({"q": "from claude", "score": 2})["total"] == 1 and listing({"cat": "Action"})["total"] == 1
     assert undo() == "import from Claude" and listing({"q": "from claude"})["total"] == 0 and listing({"cat": "Action"})["total"] == 0
+    (DATA / "events.csv").write_text("date,name\n" + "".join(
+        f"{r[0]},Spring Showdown\n{r[0]},Drop-In\n" for r in c.execute("SELECT DISTINCT substr(taken,1,10) FROM media")), encoding="utf-8")
+    plan = event_plan()
+    assert plan["have"] and all(d["options"] == ["Spring Showdown"] for d in plan["days"]), plan
+    day = plan["days"][0]
+    assert apply_events([{"date": day["date"], "event": day["event"], "name": "Spring Showdown"}]) == day["files"]
+    assert listing({"event": f"Spring Showdown {day['date']}"})["total"] == day["files"]
+    assert undo() == "event names" and listing({"event": f"Spring Showdown {day['date']}"})["total"] == 0
     one = listing({"stack": "1"})
     assert one["total"] <= listing({})["total"] and all(it["stack"] >= 1 for it in one["items"])
     scan()  # a second scan must not redo or duplicate anything
@@ -1186,5 +1284,10 @@ if __name__ == "__main__":
                 import update as updater
                 update_state["latest"] = updater.latest()
             threading.Thread(target=newest, daemon=True).start()
+
+            def tags():
+                import ai
+                ai.retag_if_changed()
+            threading.Thread(target=tags, daemon=True).start()
             print(f"{time.strftime('%Y-%m-%d %H:%M')} Media Sorter running at {url}", flush=True)
             srv.serve_forever()

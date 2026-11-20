@@ -1,6 +1,6 @@
 # Media Sorter
 
-**Version** 0.7.0 (project panel, stacks, fast viewer) · **Date** 2026-11-20 · **Status** Working; AI tags are a first pass, remote access not yet switched on · **Supersedes** 0.6.0
+**Version** 0.8.0 (more tags, event names, transcripts, AI services) · **Date** 2026-11-20 · **Status** Working; AI tags are a first pass, remote access not yet switched on · **Supersedes** 0.7.0
 
 Scans photo and video folders, scores each file 0–5, finds exact duplicates, keeps
 shots taken together in one group, and gives you a dashboard to search, tag, rate,
@@ -36,6 +36,23 @@ http://localhost:8765. "Quit app" in the dashboard stops it. Problems are writte
 - **Random pick** adds a random handful from whatever is on screen to the project (optionally narrowed by a word such
   as "hitting"), or shows one random shot at a time.
 
+## Tags, event names, transcripts and AI services
+
+- **More automatic tags** (Run AI): action shot, posed, candid, party, friends, jumping, ball in the air, sunglasses,
+  funny face, trophy or medal, shoes and feet, food and drink, kids, selfie, plus individual / pair / group (counted
+  from faces) and two more places (indoors not a gym, outdoors not a court). They are a first guess and some will be
+  wrong. The list lives in `config.default.json` and arrives with updates; after an update the library re-tags itself.
+- **Event names:** each day of photos can be named after the event on your calendar, with the date at the end
+  ("6s Qualifier Round 1 2024-11-03"). The dialog shows the calendar's names for that day beside the current name and
+  only suggests a calendar name when the two share a word. Labels only; no file is renamed; Undo reverses it. The
+  calendar is `data/events.csv` (`date,name`); "Load a calendar file" brings it onto another computer.
+- **Transcripts:** Run AI also listens to videos (on this computer) and writes down what is said. The words are
+  searchable, and each line in the viewer jumps to that moment. Gym noise can produce a few wrong or repeated lines.
+- **AI services** (optional): connect a large AI model to write a caption and extra tags for the photos in your
+  project ("Describe with AI"). Choices: Ollama on this computer (free, private) or Claude, ChatGPT or Gemini with a
+  pay-per-use key. The cloud choices send the chosen photos to that company. Keys are stored in `config.json` on this
+  computer only.
+
 ## Folders, drives and scanning
 
 - **Folders** (header button) picks which folders are scanned, from a tree of this computer's drives.
@@ -53,7 +70,7 @@ files from GitHub, backs up the old ones in `data/backup/`, and restarts. Settin
 
 To publish a version (from the development copy): raise the number in `VERSION`, commit, and push to `main`.
 
-`python sorter.py --selftest`, `python ai.py --selftest`, `python reel.py --selftest` and `python update.py --selftest` run the built-in checks.
+`python sorter.py --selftest`, `python ai.py --selftest`, `python reel.py --selftest`, `python llm.py` and `python update.py --selftest` run the built-in checks.
 `python sorter.py --rescore` recalculates scores after you change `scoring` in `config.json`.
 
 ## The AI pass
