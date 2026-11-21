@@ -1,6 +1,6 @@
 # Media Sorter
 
-**Version** 0.8.0 (more tags, event names, transcripts, AI services) · **Date** 2026-11-20 · **Status** Working; AI tags are a first pass, remote access not yet switched on · **Supersedes** 0.7.0
+**Version** 0.9.0 (video shapes, framing point, trim, photo looks) · **Date** 2026-11-20 · **Status** Working; AI tags are a first pass, remote access not yet switched on · **Supersedes** 0.8.0
 
 Scans photo and video folders, scores each file 0–5, finds exact duplicates, keeps
 shots taken together in one group, and gives you a dashboard to search, tag, rate,
@@ -113,10 +113,33 @@ Select files, then "Export copies". They are copied (never moved) into `exports/
 order they were taken, and the folder opens. Drag that folder into CapCut or Canva, or send it to your phone for Edits.
 If the selection has videos you can choose trimmed copies, which cut out the stretches where nothing moves.
 Trimmed copies are re-encoded at high quality; the originals are untouched.
+Photos you gave a look (below) are exported with it, and videos with marked pieces are exported as just those pieces.
 
-## Making a reel
+## Framing, look and trim (in the viewer)
 
-"Make a reel" in the header cuts photos into a vertical 1080x1920 video for Instagram.
+Open a file. These are saved for that file in the library; the original file is never changed, and Undo does not
+cover them (use "Use the automatic point", "Reset look" or the ✕ beside a piece).
+
+- **Framing for videos (photos):** turn on crop bars for vertical, horizontal or square. The dark bars show what a
+  video of that shape leaves out. Click the photo where the action is, or use the Across and Down sliders. Without a
+  point of your own, the app centres on the faces it found.
+- **Look (photos):** auto balance (light and contrast only; colours are left alone), a filter (vivid, warm, cool,
+  black and white, faded), and brightness, contrast and color sliders. "Save an edited copy" writes a full-size copy
+  into `exports/`. Thumbnails in the grid keep showing the original.
+- **Trim and cut (videos):** play to a spot, "Piece starts here", play on, "Piece ends here". Mark as many pieces as
+  you like. "Save trimmed copy" joins them into a new video in `exports/`.
+
+The Project panel's "Show in grid" lists only the project's files, and selecting a thumbnail there opens that file,
+so each photo of a video can be framed before it is made.
+
+## Making a video
+
+"Make a video" in the header cuts photos into a video: vertical 1080x1920 (Reels, Stories), horizontal 1920x1080,
+or square 1080x1080.
+
+- **Framing:** as the template says; fill the frame around the action; slide across to the action (each photo
+  starts on its middle and glides to the framing point; cuts shorter than 0.8 seconds just hold on the action); or
+  the whole photo on a blurred backdrop.
 
 - **Which photos:** the ones you selected; or, with nothing selected, the best-rated or a random mix from whatever
   section, tag, event or search is on screen. Duplicates and "eyes closed" photos are left out, and you can skip
@@ -128,7 +151,7 @@ Trimmed copies are re-encoded at high quality; the originals are untouched.
   Claude runs `python reel.py ...` and sends the video into the chat, where you can open it on your phone.
 
 Limits: photos only (video clips are not cut in yet), no text and no sound are added (put those on in Edits or Instagram),
-and tall crops follow detected faces, so a photo with no faces is cropped around its middle.
+and crops follow your framing point or else detected faces, so a photo with neither is cropped around its middle.
 
 ## Round-trip with Claude
 

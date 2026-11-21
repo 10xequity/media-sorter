@@ -1,9 +1,10 @@
-"""Media Sorter: cut photos into a vertical 1080x1920 video for Instagram Reels, from a template.
+"""Media Sorter: cut photos into a video (vertical for Reels, horizontal or square) from a template.
 
 The dashboard's "Make a reel" uses this. From a terminal (or from Claude in chat):
   python reel.py --list
   python reel.py --template fast-cuts --tag hitting
   python reel.py --template countdown --event "2024-10-05 Showdown 2024" --pick random --fresh
+  python reel.py --template highlights --shape horizontal --move pan
 
 Reads library photos; writes one new .mp4 into exports/reels/. Originals are never changed. No text and no sound
 are added: words and audio go on afterwards in Edits or Instagram.
@@ -17,6 +18,8 @@ from PIL import Image, ImageFilter
 import sorter as S
 
 W, H, FPS = 1080, 1920, 30
+SHAPES = {"vertical": (1080, 1920), "horizontal": (1920, 1080), "square": (1080, 1080)}
+FITS = {"fill": "crop", "pan": "crop", "whole": "blur"}  # "": whatever the template says
 
 
 def templates():
@@ -51,13 +54,6 @@ def choose(t, ids=None, view=None, pick="best", fresh=False, ordered=False):
     return sorted(rows, key=key)
 
 
-def focus(mid):
-    """Where the people are (0-1 across, 0-1 down), so a tall crop keeps them in frame. Centre if no faces."""
-    f = S.db().execute("SELECT sum((x + w / 2) * w) / sum(w), sum((y + h / 2) * w) / sum(w) FROM faces WHERE media_id=?",
-                       (mid,)).fetchone()
-    return (f[0], f[1]) if f and f[0] is not None else (0.5, 0.45)
-
-
 def cover(im, w, h, fx=0.5, fy=0.5):
     """Scale and crop to fill w x h exactly, keeping the focus point as central as the edges allow."""
     s = max(w / im.width, h / im.height)
@@ -67,26 +63,37 @@ def cover(im, w, h, fx=0.5, fy=0.5):
     return im.crop((l, t, l + w, t + h))
 
 
-def still(row, t, zoom):
-    """One finished 9:16 picture for a photo, slightly oversized when the template zooms."""
+def still(row, fit, w, h):
+    """A photo (with its saved look) scaled to cover a w x h frame, and the pixel the frame should centre on."""
     import ai
     im = ai.load(row["path"])
     if im is None:
         return None
-    w, h = round(W * (1 + zoom)), round(H * (1 + zoom))
-    if t["fit"] == "blur":  # whole photo visible, on a blurred, darkened copy of itself
+    im = S.look(im, S.edit(row["id"])["look"])
+    if fit == "blur":  # whole photo visible, on a blurred, darkened copy of itself
         out = cover(im, w, h).filter(ImageFilter.GaussianBlur(40)).point(lambda v: v * 0.55)
         im.thumbnail((w, h), Image.LANCZOS)
         out.paste(im, ((w - im.width) // 2, (h - im.height) // 2))
-    else:
-        out = cover(im, w, h, *focus(row["id"]))
-    return out
+        return out, w / 2, h / 2
+    s = max(w / im.width, h / im.height)
+    im = im.resize((max(w, round(im.width * s)), max(h, round(im.height * s))), Image.LANCZOS)
+    fx, fy = S.focus(row["id"])
+    return im, fx * im.width, fy * im.height
 
 
-def render(t, rows, name=""):
-    """Write the video. Returns its path, or None if nothing usable was chosen."""
+def window(im, cx, cy, w, h):
+    """The w x h box centred as near (cx, cy) as the picture's edges allow."""
+    l, t = min(max(0, cx - w / 2), im.width - w), min(max(0, cy - h / 2), im.height - h)
+    return (l, t, l + w, t + h)
+
+
+def render(t, rows, name="", shape="vertical", move=""):
+    """Write the video. Returns its path, or None if nothing usable was chosen.
+    move "pan" starts each photo on its middle and slides to the action; "fill" and "whole" overrule the template's fit."""
     if not rows:
         return None
+    W, H = SHAPES[shape]
+    fit = FITS.get(move, t["fit"])
     out = S.EXPORTS / "reels"
     out.mkdir(parents=True, exist_ok=True)
     name = re.sub(r"[^\w\- ]", "", str(name)).strip()[:50] or t["id"]
@@ -99,17 +106,21 @@ def render(t, rows, name=""):
     try:
         for loop in range(t.get("loops", 1)):
             for i, row in enumerate(rows):
-                im = still(row, t, zoom)
-                if im is None:
+                got = still(row, fit, round(W * (1 + zoom)), round(H * (1 + zoom)))
+                if got is None:
                     continue
+                im, cx, cy = got
                 n = max(1, round(beats[min(i, len(beats) - 1)] * FPS))
-                if not zoom:
-                    ff.stdin.write(im.tobytes() * n)
+                slide = move == "pan" and n >= FPS * 0.8  # shorter than that reads as a twitch: just frame the action
+                if not zoom and not slide:
+                    ff.stdin.write(im.resize((W, H), Image.BILINEAR, box=window(im, cx, cy, W, H)).tobytes() * n)
                     continue
-                for k in range(n):  # slow push-in: the visible window shrinks from the full picture to the centre
-                    z = zoom * (1 - k / n)
-                    dx, dy = max(0, (im.width - W * (1 + z)) / 2), max(0, (im.height - H * (1 + z)) / 2)
-                    ff.stdin.write(im.resize((W, H), Image.BILINEAR, box=(dx, dy, im.width - dx, im.height - dy)).tobytes())
+                for k in range(n):  # slow push-in (the window shrinks) and, when sliding, a glide from the middle to the action
+                    z, p = zoom * (1 - k / n), min(1, k / (n * 0.8))
+                    p = p * p * (3 - 2 * p) if slide else 1
+                    box = window(im, im.width / 2 + (cx - im.width / 2) * p, im.height / 2 + (cy - im.height / 2) * p,
+                                 W * (1 + z), H * (1 + z))
+                    ff.stdin.write(im.resize((W, H), Image.BILINEAR, box=box).tobytes())
     except Exception:
         ff.stdin.close()
         ff.wait()
@@ -120,12 +131,12 @@ def render(t, rows, name=""):
     return path if path.exists() and path.stat().st_size else None
 
 
-def make(template, ids=None, view=None, pick="best", fresh=False, name="", ordered=False):
+def make(template, ids=None, view=None, pick="best", fresh=False, name="", ordered=False, shape="vertical", move=""):
     t = next((x for x in templates()["templates"] if x["id"] == template), None)
-    if not t:
-        raise ValueError("unknown template")
+    if not t or shape not in SHAPES or move not in ("", *FITS):
+        raise ValueError("unknown template, shape or framing")
     rows = choose(t, ids, view, pick, fresh, ordered)
-    path = render(t, rows, name)
+    path = render(t, rows, name, shape, move)
     if not path:
         raise ValueError("No usable photos here for this template. Try another section, or a different template.")
     return {"file": path.name, "path": str(path), "photos": len(rows), "ids": [r["id"] for r in rows]}
@@ -134,12 +145,22 @@ def make(template, ids=None, view=None, pick="best", fresh=False, name="", order
 def selftest():
     assert cover(Image.new("RGB", (3000, 2000)), W, H, 0.9, 0.5).size == (W, H)
     assert cover(Image.new("RGB", (500, 2000)), W, H, 0.0, 1.0).size == (W, H)
+    wide = Image.new("RGB", (3000, 1000))
+    assert window(wide, 2900, 500, 1000, 1000) == (2000, 0, 3000, 1000) and window(wide, 0, 0, 1000, 1000) == (0, 0, 1000, 1000)
+    grey = Image.new("RGB", (8, 8), (90, 100, 110))
+    assert S.look(grey, {}) is grey and S.look(grey, {"filter": "bw"}).getpixel((0, 0))[0] == S.look(grey, {"filter": "bw"}).getpixel((0, 0))[2]
+    assert S.look(grey, {"filter": "warm"}).getpixel((0, 0))[0] > 90 > 0 and S.look(grey, {"bright": 1.5}).getpixel((0, 0))[1] == 150
+    assert S.clean_look({"bright": 9, "filter": "nope", "auto": 1, "x": 2}) == {"bright": 1.5, "auto": True}
     ids = [r[0] for r in S.db().execute("SELECT id FROM media WHERE kind='photo' AND status='active' AND err IS NULL LIMIT 3")]
     if ids:  # needs a scanned library; skipped on a fresh install
         t = {"id": "selftest", "photos": 3, "beats": [0.2], "zoom": 0.05, "fit": "blur", "order": "time"}
         p = render(t, choose(t, ids), "selftest")
         dur = float(S.ffrun(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(p)]))
         assert abs(dur - 0.6) < 0.1, dur
+        p.unlink()
+        p = render({**t, "beats": [1.0], "zoom": 0}, choose(t, ids), "selftest", "horizontal", "pan")
+        assert S.ffrun(["ffprobe", "-v", "error", "-select_streams", "v", "-show_entries", "stream=width,height,nb_frames",
+                        "-of", "csv=p=0", str(p)]).decode().strip() == "1920,1080,90"
         p.unlink()
     print("reel selftest passed")
 
@@ -152,6 +173,8 @@ if __name__ == "__main__":
     for k in ("tag", "cat", "event", "q", "name"):
         ap.add_argument("--" + k, default="")
     ap.add_argument("--pick", choices=["best", "random"], default="best")
+    ap.add_argument("--shape", choices=list(SHAPES), default="vertical")
+    ap.add_argument("--move", choices=["", *FITS], default="", help="fill, pan (slide to the action) or whole photo")
     ap.add_argument("--fresh", action="store_true", help="skip photos already posted")
     a = ap.parse_args()
     if a.selftest:
@@ -161,4 +184,4 @@ if __name__ == "__main__":
             print(f"{t['id']:14} {t['name']}: {t['about']}")
     else:
         view = {k: getattr(a, k) for k in ("tag", "cat", "event", "q") if getattr(a, k)}
-        print(json.dumps(make(a.template, None, view, a.pick, a.fresh, a.name)))
+        print(json.dumps(make(a.template, None, view, a.pick, a.fresh, a.name, shape=a.shape, move=a.move)))

@@ -151,7 +151,8 @@ progress { width: 140px; height: 8px; accent-color: var(--ball); }
 #reelbox .opt:has(input:checked) { border-color: var(--ball); background: var(--raised); }
 #reelbox .opt small { grid-column: 2; color: var(--mute); }
 #reelbox label.line { display: grid; gap: 4px; color: var(--mute); }
-#reelbox video { width: 180px; border-radius: 8px; background: #000; }
+#reelbox video { max-width: 300px; max-height: 320px; border-radius: 8px; background: #000; }
+#reelbox .row label.line { flex: 1; min-width: 200px; }
 #reelout { display: flex; gap: 14px; align-items: start; }
 #notice { display: grid; gap: 6px; margin: 0 0 14px; }
 #notice > div { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 14px; border: 1px solid var(--line);
@@ -214,6 +215,16 @@ dialog::backdrop { background: #000; }
 #stage .prev { left: 10px; } #stage .next { right: 10px; }
 #stage .shut { position: absolute; top: 10px; right: 10px; width: 44px; height: 44px; font-size: 20px; background: rgba(23,34,44,.8); z-index: 2; }
 #stage .wait { position: absolute; color: var(--mute); }
+#stage { overflow: hidden; }
+#stage img.aim { cursor: crosshair; }
+#crop { position: absolute; box-shadow: 0 0 0 200vmax rgba(5, 9, 13, .7); outline: 1px solid rgba(255, 255, 255, .75); pointer-events: none; }
+#dot { position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; border: 2px solid #fff; border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--ball), 0 0 6px #000; pointer-events: none; }
+#side fieldset { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin: 0; display: grid; gap: 8px; min-width: 0; }
+#side legend { color: var(--mute); font-size: 13px; padding: 0 4px; }
+#side input[type=range] { width: 100%; padding: 0; accent-color: var(--ball); }
+#side label.tick { display: flex; gap: 8px; align-items: center; color: inherit; font-size: inherit; }
+#plist .open { padding: 0; border: 0; background: none; }
 #side { border-left: 1px solid var(--line); padding: 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
 #side h2 { font-size: 18px; overflow-wrap: anywhere; }
 #side .path { color: var(--mute); font-size: 12px; overflow-wrap: anywhere; }
@@ -228,6 +239,7 @@ button.chip:hover { border-color: var(--bad); color: var(--bad); }
 #related button { padding: 0; border: 0; aspect-ratio: 1; overflow: hidden; border-radius: 4px; }
 #related img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .row { display: flex; gap: 8px; flex-wrap: wrap; }
+[hidden] { display: none !important; } /* layout classes must not un-hide things */
 kbd { background: var(--raised); border-radius: 3px; padding: 0 5px; font: 12px var(--body); }
 
 @media (max-width: 820px) {
@@ -266,7 +278,7 @@ kbd { background: var(--raised); border-radius: 3px; padding: 0 5px; font: 12px 
         <button id="airun" title="Tags, people, closed eyes and video dead time. Runs on this computer only.">Run AI</button></span>
       <span class="grp"><b>Create</b>
         <button id="rand" title="Pick photos at random from what is on screen">Random pick</button>
-        <button id="mkreel" title="Cut photos into a vertical video for Instagram">Make a reel</button></span>
+        <button id="mkreel" title="Cut photos into a video: vertical for Reels, horizontal or square">Make a video</button></span>
       <span class="grp"><button id="undo" title="Undo the last change (Ctrl+Z)">Undo</button></span>
       <span class="gap"></span>
       <span id="scanmsg" role="status"></span><progress id="prog" hidden aria-label="Progress"></progress>
@@ -308,7 +320,7 @@ kbd { background: var(--raised); border-radius: 3px; padding: 0 5px; font: 12px 
   <div id="pbody">
     <div class="path" id="phelp">Tick photos or drag them here, from any folder or search. They stay collected while you browse. Drag to put them in order.</div>
     <ol id="plist"></ol>
-    <div class="row"><button class="primary" id="pmake">Make a video</button><button id="pexport">Export copies</button>
+    <div class="row"><button class="primary" id="pmake">Make a video</button><button id="pshow" title="Show only the project's files in the main view, to frame or edit each one">Show in grid</button><button id="pexport">Export copies</button>
       <button id="pdescribe" title="Have the connected AI service write a caption and tags for these photos">Describe with AI</button><button id="pclear">Clear</button></div>
   </div>
 </aside>
@@ -316,9 +328,17 @@ kbd { background: var(--raised); border-radius: 3px; padding: 0 5px; font: 12px 
 <div id="toast" role="status"><span></span><button>Undo</button></div>
 
 <dialog id="reelbox" aria-labelledby="reeltitle">
-  <h2 id="reeltitle">Make a reel</h2>
+  <h2 id="reeltitle">Make a video</h2>
   <div id="reelsrc"></div>
   <fieldset><legend>Template</legend><div id="reeltpl" style="display:grid;gap:6px"></div></fieldset>
+  <div class="row">
+    <label class="line">Shape<select id="reelshape"><option value="vertical">Vertical 9:16 (Reels, Stories)</option>
+      <option value="horizontal">Horizontal 16:9 (YouTube, TV)</option><option value="square">Square 1:1</option></select></label>
+    <label class="line">Framing<select id="reelmove"><option value="">As the template says</option>
+      <option value="fill">Fill the frame around the action</option><option value="pan">Slide across to the action</option>
+      <option value="whole">Whole photo on a blurred backdrop</option></select></label>
+  </div>
+  <div class="path">The action is found from the faces in each photo. To choose it yourself, open a photo and use “Framing for videos”.</div>
   <div id="reelauto" class="row" style="align-items:center">
     <select id="reelpick" aria-label="How to choose photos"><option value="best">Best rated</option><option value="random">Random mix</option></select>
     <label><input type="checkbox" id="reelfresh" checked> Skip photos already posted</label>
@@ -379,6 +399,7 @@ kbd { background: var(--raised); border-radius: 3px; padding: 0 5px; font: 12px 
 <dialog id="viewer" aria-label="File viewer">
   <div id="stage">
     <div id="vload" hidden></div>
+    <div id="crop" hidden></div><div id="dot" hidden></div>
     <button class="shut" aria-label="Close viewer" title="Close (Esc)">✕</button>
     <button class="step prev" aria-label="Previous file">‹</button>
     <button class="step next" aria-label="Next file">›</button>
@@ -419,7 +440,8 @@ try { S.sel = new Set(JSON.parse(localStorage.getItem('project') || '[]').filter
 document.querySelector('main').append($('bar'));
 
 const params = (extra = {}) => new URLSearchParams(Object.entries({ view: S.view, kind: S.kind, cat: S.cat, event: S.event,
-  grp: S.grp, tag: S.tag, q: S.q, score: S.score, sort: S.sort, stack: $('stack').checked ? 1 : '', ...extra }).filter(([, v]) => v !== '' && v != null));
+  grp: S.grp, tag: S.tag, q: S.q, score: S.score, sort: S.sort, stack: $('stack').checked && !S.proj ? 1 : '',
+  ids: S.proj ? [...S.sel].slice(0, 2000).join(',') : '', ...extra }).filter(([, v]) => v !== '' && v != null));
 
 function pips(it) {
   const p = h('span', { class: 'pips' + (it.user_score != null ? ' mine' : ''), role: 'img',
@@ -488,12 +510,12 @@ function railButton(label, n, patch, extra = '') {
   return h('button', { class: extra, 'aria-current': cur, 'data-dest': patch.cat || patch.view || '',
     onclick: () => go(patch) }, h('span', { title: label }, label), h('span', { class: 'n' }, n == null ? '' : num(n)));
 }
-const HOME = { view: 'active', kind: '', cat: '', event: '', grp: '', tag: '', score: '' };
+const HOME = { view: 'active', kind: '', cat: '', event: '', grp: '', tag: '', score: '', proj: '' };
 const where = () => Object.fromEntries(Object.keys(HOME).map(k => [k, S[k]]));
 function go(patch) {   // the project (your ticked files) is kept while you move around
   Object.assign(S, HOME, patch);
   history.pushState(where(), '');
-  scrollTo(0, 0); refresh();
+  scrollTo(0, 0); return refresh();
 }
 addEventListener('popstate', e => { Object.assign(S, HOME, e.state || {}); refresh(); });
 $('back').onclick = () => history.back();
@@ -528,7 +550,7 @@ async function refresh(reload = true) {
   $('rename').hidden = !st.people.some(([t]) => t === S.tag);
   $('bcat').replaceChildren(h('option', { value: '' }, 'Set category…'), ...[...cats.keys()].map(c => h('option', {}, c)), h('option', { value: '__none' }, 'No category'));
   $('eventlist').replaceChildren(...st.events.map(([e]) => h('option', { value: e })));
-  $('title').textContent = S.grp ? 'Sequence' : S.view === 'flagged' ? 'Flagged low quality or duplicate' : S.view === 'review' ? `Review folder, ${gb(st.review_bytes)}`
+  $('title').textContent = S.proj ? 'Project' : S.grp ? 'Sequence' : S.view === 'flagged' ? 'Flagged low quality or duplicate' : S.view === 'review' ? `Review folder, ${gb(st.review_bytes)}`
     : S.event || S.cat || S.tag || (S.kind === 'photo' ? 'Photos' : S.kind === 'video' ? 'Videos' : 'All media');
   $('back').hidden = Object.keys(HOME).every(k => S[k] === HOME[k]);
   $('stack').parentElement.hidden = !!S.grp || S.view !== 'active';
@@ -584,10 +606,11 @@ function drawProject() {
   try { localStorage.setItem('project', JSON.stringify(ids.slice(0, 5000))); } catch (e) {}
   $('pcount').textContent = num(ids.length);
   $('phelp').hidden = ids.length > 0;
-  for (const b of ['pmake', 'pexport', 'pclear', 'pdescribe']) $(b).disabled = !ids.length;
+  for (const b of ['pmake', 'pexport', 'pclear', 'pdescribe', 'pshow']) $(b).disabled = !ids.length;
   $('plist').replaceChildren(...ids.slice(0, 200).map((id, n) => {
     const li = h('li', { draggable: true, 'data-id': id },
-      h('span', {}, String(n + 1)), h('img', { src: `/thumb/${id}`, alt: `Item ${n + 1}`, loading: 'lazy' }),
+      h('span', {}, String(n + 1)), h('button', { class: 'open', title: 'Open to frame or edit', 'aria-label': `Open item ${n + 1}`, onclick: () => openId(id) },
+        h('img', { src: `/thumb/${id}`, alt: '', loading: 'lazy' })),
       h('span', { class: 'mv' },
         h('button', { 'aria-label': `Move item ${n + 1} earlier`, title: 'Earlier', disabled: n === 0, onclick: () => reorder(id, ids[n - 1]) }, '↑'),
         h('button', { 'aria-label': `Move item ${n + 1} later`, title: 'Later', disabled: n === ids.length - 1, onclick: () => reorder(id, ids[n + 2]) }, '↓'),
@@ -609,6 +632,12 @@ $('ptoggle').onclick = () => { const shut = $('project').classList.toggle('shut'
   $('ptoggle').textContent = shut ? '‹' : '›'; $('ptoggle').setAttribute('aria-expanded', String(!shut)); };
 $('pclear').onclick = () => { if (confirm(`Empty the project? The ${S.sel.size} files themselves are not touched.`)) { S.sel.clear(); paintSel(); } };
 $('pmake').onclick = () => $('mkreel').click();
+$('pshow').onclick = () => go({ proj: '1' });
+async function openId(id) {   // open a project file in the viewer; if it is not on screen, switch the main view to the project first
+  let j = S.items.findIndex(x => x.id === id);
+  if (j < 0) { await go({ proj: '1' }); j = S.items.findIndex(x => x.id === id); }
+  if (j >= 0) openViewer(j);
+}
 $('pexport').onclick = () => $('export').click();
 
 // ----- optional AI service -----
@@ -723,7 +752,7 @@ $('export').onclick = async () => {
   const trim = hasVideo && confirm('Cut the stretches where nothing happens out of the videos?\n\nOK: trimmed copies. Cancel: straight copies.');
   toast('Exporting…');
   try { const r = await api('/api/export', { ids: [...S.sel], name, trim });
-    toast(`Exported ${num(r.files)} files${r.trimmed ? `, ${r.trimmed} trimmed` : ''} to ${r.folder}`); }
+    toast(`Exported ${num(r.files)} files${r.trimmed ? `, ${r.trimmed} trimmed` : ''}${r.edited ? `, ${r.edited} with your edits` : ''} to ${r.folder}`); }
   catch (e) { toast(e.message); }
 };
 $('toreview').onclick = () => act('review', {}, 'Moved to review folder', 'review');
@@ -794,6 +823,7 @@ $('mkreel').onclick = async () => {
     : `Choosing photos from: ${$('title').textContent}${S.q ? `, search “${S.q}”` : ''}. Tick photos first if you want to pick them yourself.`;
   $('reelauto').hidden = n > 0;
   $('reelout').replaceChildren(); $('reelmsg').textContent = '';
+  $('reelshape').value = mem('shape') || 'vertical';
   $('reelbox').showModal();
 };
 $('reelclose').onclick = () => $('reelbox').close();
@@ -804,7 +834,8 @@ $('reelgo').onclick = async () => {
   try {
     const r = await api('/api/reel', { ids: [...S.sel], template: document.querySelector('input[name=tpl]:checked').value,
       view: { cat: S.cat, event: S.event, grp: S.grp, tag: S.tag, q: S.q, score: S.score },
-      pick: $('reelpick').value, fresh: $('reelfresh').checked, name: $('reelname').value, ordered: true });
+      pick: $('reelpick').value, fresh: $('reelfresh').checked, name: $('reelname').value, ordered: true,
+      shape: mem('shape', $('reelshape').value), move: $('reelmove').value });
     const url = '/reel/' + encodeURIComponent(r.file);
     $('reelmsg').textContent = `Done: ${r.photos} photos.`;
     $('reelout').replaceChildren(h('video', { src: url, controls: true, autoplay: true, loop: true, muted: true, playsinline: true }),
@@ -888,9 +919,26 @@ let qTimer;
 $('q').oninput = e => { clearTimeout(qTimer); qTimer = setTimeout(() => { S.q = e.target.value; load(); }, 220); };
 
 // ----- viewer -----
+const mem = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) {} return v; };
+function picRect(img) {   // where the picture itself sits inside its letterboxed element
+  const b = img.getBoundingClientRect(), r = (img.naturalWidth / img.naturalHeight) || 1.5, w = Math.min(b.width, b.height * r);
+  return { x: b.left + (b.width - w) / 2, y: b.top + (b.height - w / r) / 2, w, h: w / r, r };
+}
+const ASPECT = { vertical: 9 / 16, horizontal: 16 / 9, square: 1 };
+function drawCrop(img, shape, fx, fy) {   // the bars darken what a video of this shape leaves out; the ring is the point it centres on
+  const on = !!shape && img.isConnected;
+  $('crop').hidden = $('dot').hidden = !on; img.classList.toggle('aim', on);
+  if (!on) return;
+  const p = picRect(img), s = $('stage').getBoundingClientRect(), a = ASPECT[shape];
+  const fw = Math.min(1, a / p.r), fh = Math.min(1, p.r / a);
+  const l = Math.min(Math.max(0, fx - fw / 2), 1 - fw), t = Math.min(Math.max(0, fy - fh / 2), 1 - fh);
+  Object.assign($('crop').style, { left: p.x - s.left + l * p.w + 'px', top: p.y - s.top + t * p.h + 'px', width: fw * p.w + 'px', height: fh * p.h + 'px' });
+  Object.assign($('dot').style, { left: p.x - s.left + fx * p.w + 'px', top: p.y - s.top + fy * p.h + 'px' });
+}
+addEventListener('resize', () => S.aim && S.aim());
 async function openViewer(i) {
   if (i < 0 || i >= S.items.length) return;
-  S.open = i;
+  S.open = i; S.aim = null; $('crop').hidden = $('dot').hidden = true;
   const it = S.items[i], v = $('viewer'), stage = $('stage');
   stage.querySelectorAll('img,video,p').forEach(e => e.remove());
   const media = it.err ? h('p', {}, 'This file could not be read: ' + it.err)
@@ -904,7 +952,7 @@ async function openViewer(i) {
   }
   if (it.kind === 'photo' && !it.err) {   // the small picture shows at once; the sharp one replaces it when it arrives
     const big = new Image(); $('vload').hidden = false;
-    big.onload = () => { if (S.open === i) { media.src = big.src; media.classList.remove('soft'); $('vload').hidden = true; } };
+    big.onload = () => { if (S.open === i && !media.dataset.look) { media.src = big.src; media.classList.remove('soft'); $('vload').hidden = true; } };
     big.onerror = () => { if (S.open === i) { media.classList.remove('soft'); $('vload').hidden = true; } };
     big.src = `/view/${it.id}`;
     for (const j of [i + 1, i + 2, i - 1]) if (S.items[j] && S.items[j].kind === 'photo') new Image().src = `/view/${S.items[j].id}`;  // get the neighbours ready
@@ -926,6 +974,69 @@ async function openViewer(i) {
   const tagIn = h('input', { placeholder: 'Add tag, Enter', 'aria-label': 'Add a tag',
     onkeydown: e => { e.stopPropagation(); if (e.key === 'Enter' && e.target.value.trim()) one('update', { add: [e.target.value] }, 'Tagged'); } });
   ev.onkeydown = e => e.stopPropagation();
+  // Framing point, look and kept video pieces are saved for this file. The original is never changed.
+  const E = d.edit, img = stage.querySelector('img'), vid = stage.querySelector('video'), tools = [];
+  const saveEdit = body => api('/api/edit', { ids: [it.id], ...body }).then(e => Object.assign(E, e), e => toast(e.message));
+  const box = (title, ...kids) => h('fieldset', {}, h('legend', {}, title), ...kids);
+  const copy = (label, busy) => h('button', { onclick: async e => { e.target.disabled = true; toast(busy);
+    try { const r = await api('/api/export', { ids: [it.id] }); toast('Saved in ' + r.folder); } catch (x) { toast(x.message); }
+    e.target.disabled = false; } }, label);
+  if (img && !it.err) {
+    const range = (label, min, max) => h('input', { type: 'range', min, max, 'aria-label': label });
+    const across = range('Framing point, across', 0, 100), down = range('Framing point, down', 0, 100);
+    const auto = h('button', { onclick: () => saveEdit({ point: null }).then(drawAim) }, 'Use the automatic point');
+    const bars = h('select', { onchange: e => { mem('bars', e.target.value); drawAim(); } },
+      ...[['', 'Off'], ['vertical', 'Vertical 9:16'], ['horizontal', 'Horizontal 16:9'], ['square', 'Square 1:1']].map(([v, t]) =>
+        h('option', { value: v, selected: v === (mem('bars') || '') }, t)));
+    const drawAim = () => { const [fx, fy] = E.point || d.focus; across.value = fx * 100; down.value = fy * 100; auto.disabled = !E.point;
+      S.aim = () => drawCrop(img, bars.value, fx, fy); S.aim(); };
+    across.oninput = down.oninput = () => drawCrop(img, bars.value, across.value / 100, down.value / 100);
+    across.onchange = down.onchange = () => saveEdit({ point: [across.value / 100, down.value / 100] }).then(drawAim);
+    img.onclick = e => { if (!bars.value) return; const r = picRect(img);
+      saveEdit({ point: [(e.clientX - r.x) / r.w, (e.clientY - r.y) / r.h] }).then(drawAim); };
+    img.onload = () => S.aim && S.aim();
+    const showLook = () => { const pic = new Image(); img.dataset.look = 1; $('vload').hidden = false;
+      pic.onload = pic.onerror = () => { if (S.open === i && pic.width) { img.src = pic.src; img.classList.remove('soft'); } $('vload').hidden = true; };
+      pic.src = `/view/${it.id}?look=` + encodeURIComponent(JSON.stringify(E.look)); };
+    const setLook = patch => saveEdit({ look: { ...E.look, ...patch } }).then(() => { drawLook(); showLook(); });
+    const balance = h('input', { type: 'checkbox', onchange: e => setLook({ auto: e.target.checked }) });
+    const filt = h('select', { onchange: e => setLook({ filter: e.target.value }) }, ...Object.entries(d.filters).map(([v, t]) => h('option', { value: v }, t)));
+    const dials = [['bright', 'Brightness'], ['contrast', 'Contrast'], ['color', 'Color']].map(([k, label]) => {
+      const el = range(label, 50, 150); el.onchange = () => setLook({ [k]: el.value / 100 }); return [k, label, el]; });
+    const reset = h('button', { onclick: () => setLook({ auto: false, filter: '', bright: 1, contrast: 1, color: 1 }) }, 'Reset look');
+    const drawLook = () => { balance.checked = !!E.look.auto; filt.value = E.look.filter || ''; reset.disabled = !Object.keys(E.look).length;
+      for (const [k, , el] of dials) el.value = (E.look[k] || 1) * 100; };
+    drawAim(); drawLook(); if (Object.keys(E.look).length) showLook();
+    tools.push(box('Framing for videos', h('label', {}, 'Crop bars for', bars),
+        h('div', { class: 'path' }, 'With the bars on, click the photo where the action is, or use the sliders. Videos keep that spot in frame.'),
+        h('label', {}, 'Across', across), h('label', {}, 'Down', down), h('div', { class: 'row' }, auto)),
+      box('Look', h('label', { class: 'tick' }, balance, 'Auto balance light and contrast'), h('label', {}, 'Filter', filt),
+        ...dials.map(([, label, el]) => h('label', {}, label, el)),
+        h('div', { class: 'row' }, reset, copy('Save an edited copy', 'Saving a copy…')),
+        h('div', { class: 'path' }, 'The original file is not changed. Videos you make and copies you export use this look.')));
+  }
+  if (vid && !it.err) {
+    let from = null;
+    const tick = s => `${clock(s)}.${Math.floor(s * 10) % 10}`;
+    const list = h('div', { style: 'display:grid;gap:6px' }), msg = h('div', { class: 'path', role: 'status' });
+    const save = copy('Save trimmed copy', 'Cutting the video. Long ones take a few minutes…');
+    const drawKeep = () => {
+      list.replaceChildren(...E.keep.map(([a, b], n) => h('div', { class: 'row' },
+        h('button', { class: 'chip', title: 'Jump to this piece', onclick: () => { vid.currentTime = a; vid.play().catch(() => {}); } }, `${tick(a)} to ${tick(b)}`),
+        h('button', { class: 'chip', 'aria-label': `Remove piece ${n + 1}`, onclick: () => saveEdit({ keep: E.keep.filter((_, m) => m !== n) }).then(drawKeep) }, '✕'))));
+      save.disabled = !E.keep.length;
+      msg.textContent = from != null ? `Piece starts at ${tick(from)}. Play on to where it should end, then choose “Piece ends here”.`
+        : E.keep.length ? `Keeping ${E.keep.length === 1 ? '1 piece' : E.keep.length + ' pieces'}, ${tick(E.keep.reduce((s, [a, b]) => s + b - a, 0))} in all.`
+        : 'No pieces marked yet, so the whole video is kept.';
+    };
+    drawKeep();
+    tools.push(box('Trim and cut',
+      h('div', { class: 'path' }, 'Play to a spot and mark it. The pieces you keep are joined into a new video; the original is not changed.'),
+      h('div', { class: 'row' }, h('button', { onclick: () => { from = vid.currentTime; drawKeep(); } }, 'Piece starts here'),
+        h('button', { onclick: () => { if (from == null || vid.currentTime - from < 0.2) return void (msg.textContent = 'Mark where the piece starts first, then play forward.');
+          const piece = [from, vid.currentTime]; from = null; saveEdit({ keep: [...E.keep, piece] }).then(drawKeep); } }, 'Piece ends here')),
+      list, msg, h('div', { class: 'row' }, save)));
+  }
   $('side').replaceChildren(
     h('div', {}, h('h2', {}, base(d.path)), h('div', { class: 'path' }, d.orig_path)),
     h('div', {}, `${d.taken || ''}`, h('br'), `${d.w || '?'}×${d.h || '?'}${d.dur ? ', ' + clock(d.dur) : ''}, ${gb(d.size)}${d.codec ? ', ' + d.codec : ''}`),
@@ -945,6 +1056,7 @@ async function openViewer(i) {
       h('div', { class: 'said' }, ...d.said.map(([a, , text]) => h('button', {
         onclick: () => { const vid = stage.querySelector('video'); if (vid) { vid.currentTime = a; vid.play().catch(() => {}); } } },
         h('span', {}, clock(a)), h('span', {}, text))))) : null,
+    ...tools,
     h('label', {}, 'Category', cat), h('label', {}, 'Event', ev),
     h('div', {}, h('div', { class: 'chips', style: 'margin-bottom:8px' }, ...tags.map(t =>
       h('button', { class: 'chip', title: 'Remove this tag', 'aria-label': `Remove tag ${t}`, onclick: () => one('update', { remove: [t] }, 'Tag removed') }, t))), tagIn),

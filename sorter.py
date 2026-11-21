@@ -73,6 +73,7 @@ def db():
               emb BLOB, blink REAL, person TEXT);
             CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
             CREATE TABLE IF NOT EXISTS captions(media_id INTEGER PRIMARY KEY, text TEXT, by TEXT);
+            CREATE TABLE IF NOT EXISTS edits(media_id INTEGER PRIMARY KEY, fx REAL, fy REAL, look TEXT, keep TEXT);
             CREATE TABLE IF NOT EXISTS transcripts(media_id INTEGER PRIMARY KEY, text TEXT, segs TEXT);
             CREATE TABLE IF NOT EXISTS roots(path TEXT PRIMARY KEY, serial TEXT, label TEXT);
             CREATE TABLE IF NOT EXISTS scans(id INTEGER PRIMARY KEY, at TEXT, secs REAL, folders TEXT,
@@ -620,6 +621,86 @@ def apply_events(choices):
     return sum(len(ids) for ids, _ in jobs)
 
 
+# ---------- your edits to one file: framing point, look, kept video pieces ----------
+# Kept in the library database. The original file is never changed; videos and exported copies are made with them.
+
+FILTERS = {"": "None", "vivid": "Vivid", "warm": "Warm", "cool": "Cool", "bw": "Black and white", "faded": "Faded"}
+
+
+def edit(mid):
+    r = db().execute("SELECT fx, fy, look, keep FROM edits WHERE media_id=?", (mid,)).fetchone()
+    return {"point": [r["fx"], r["fy"]] if r and r["fx"] is not None else None,
+            "look": json.loads(r["look"] or "{}") if r else {}, "keep": json.loads(r["keep"] or "[]") if r else []}
+
+
+def clean_look(d):
+    d = d if isinstance(d, dict) else {}
+    out = {k: round(min(1.5, max(0.5, float(d[k]))), 2) for k in ("bright", "contrast", "color")
+           if isinstance(d.get(k), (int, float)) and abs(d[k] - 1) > 0.005}
+    if d.get("auto"):
+        out["auto"] = True
+    if d.get("filter") and d["filter"] in FILTERS:
+        out["filter"] = d["filter"]
+    return out
+
+
+def set_edit(ids, b):
+    """Save the framing point, look or kept pieces for these files. Only the keys given change; an empty value clears one."""
+    c = db()
+    with WLOCK:
+        for i in ids:
+            e = edit(i)
+            if "point" in b:
+                e["point"] = [min(1.0, max(0.0, float(v))) for v in b["point"][:2]] if b["point"] else None
+            if "look" in b:
+                e["look"] = clean_look(b["look"])
+            if "keep" in b:
+                e["keep"] = sorted([round(float(a), 2), round(float(z), 2)] for a, z in (b["keep"] or [])[:50]
+                                   if float(a) >= 0 and float(z) - float(a) >= 0.2)
+            c.execute("INSERT OR REPLACE INTO edits VALUES(?,?,?,?,?)", (i, *(e["point"] or (None, None)),
+                      json.dumps(e["look"]) if e["look"] else None, json.dumps(e["keep"]) if e["keep"] else None))
+        c.commit()
+    return edit(ids[0]) if ids else {}
+
+
+def focus(mid):
+    """Where a crop should centre (0-1 across, 0-1 down): the point you set, else where the faces are, else the middle."""
+    c = db()
+    f = c.execute("SELECT fx, fy FROM edits WHERE media_id=? AND fx IS NOT NULL", (mid,)).fetchone() or c.execute(
+        "SELECT sum((x + w / 2) * w) / sum(w), sum((y + h / 2) * w) / sum(w) FROM faces WHERE media_id=?", (mid,)).fetchone()
+    return (f[0], f[1]) if f and f[0] is not None else (0.5, 0.45)
+
+
+def look(im, e):
+    """A copy of the picture with a saved look applied."""
+    if not e:
+        return im
+    from PIL import ImageEnhance
+    if e.get("auto"):  # light and contrast only. Colours are left alone: rebalancing them drains skin on dark backdrops
+        g = np.asarray(im.convert("L"))
+        lo, hi = (float(v) for v in np.percentile(g, (0.5, 99.5)))
+        if hi - lo > 30:
+            mid = min(0.95, max(0.05, (float(np.median(g)) - lo) / (hi - lo)))
+            gamma = min(1.25, max(0.8, math.log(0.45) / math.log(mid)))
+            im = im.point([round(255 * min(1.0, max(0.0, (v - lo) / (hi - lo))) ** gamma) for v in range(256)] * 3)
+    f, b, c, s = e.get("filter"), e.get("bright", 1), e.get("contrast", 1), e.get("color", 1)
+    if f == "vivid":
+        c, s = c * 1.1, s * 1.35
+    if f == "faded":
+        c, s = c * 0.85, s * 0.8
+    if f == "bw":
+        s = 0
+    for tool, v in ((ImageEnhance.Brightness, b), (ImageEnhance.Contrast, c), (ImageEnhance.Color, s)):
+        if v != 1:
+            im = tool(im).enhance(v)
+    if f in ("warm", "cool", "faded"):
+        red, blue = (1.08, 0.92) if f == "warm" else (0.93, 1.07) if f == "cool" else (1, 1)
+        lift = 28 if f == "faded" else 0
+        lut = lambda k: [min(255, round(lift + v * k * (255 - lift) / 255)) for v in range(256)]
+        im = im.point(lut(red) + lut(1) + lut(blue))
+    return im
+
+
 def cut(src, keep, out):
     """Write a new video containing only the kept stretches. The original is never touched."""
     sel = "+".join(f"between(t,{a:.2f},{b:.2f})" for a, b in keep)
@@ -644,20 +725,29 @@ def export(ids, name="", trim=False):
         out = dest / f"{n:03d}_{os.path.basename(r['path'])}"
         dead = c.execute("SELECT dead FROM ai WHERE media_id=?", (r["id"],)).fetchone()
         dead = json.loads(dead[0])["dead"] if dead and dead[0] else []
-        trimmed = False
-        if trim and r["kind"] == "video" and dead and r["dur"]:
-            edges = [0.0, *(t for seg in dead for t in seg), r["dur"]]
-            keep = [(a, b) for a, b in zip(edges[::2], edges[1::2]) if b - a > 0.5]
+        e, trimmed, edited = edit(r["id"]), False, False
+        if r["kind"] == "video" and r["dur"]:
+            keep = e["keep"]  # the pieces you marked; failing that, everything but the dead stretches (if asked)
+            if not keep and trim and dead:
+                edges = [0.0, *(t for seg in dead for t in seg), r["dur"]]
+                keep = [(a, b) for a, b in zip(edges[::2], edges[1::2]) if b - a > 0.5]
             trimmed = bool(keep) and cut(r["path"], keep, out.with_suffix(".mp4"))
-        if trimmed:
-            out = out.with_suffix(".mp4")
+        elif e["look"]:
+            try:
+                look(ImageOps.exif_transpose(Image.open(r["path"])).convert("RGB"), e["look"]).save(
+                    out.with_suffix(".jpg"), "JPEG", quality=95, subsampling=0)
+                edited = True
+            except Exception:
+                pass  # a format Pillow cannot open: fall back to a straight copy
+        if trimmed or edited:
+            out = out.with_suffix(".mp4" if trimmed else ".jpg")
         else:
             try:
                 shutil.copy2(r["path"], out)
             except OSError:
                 continue
         manifest.append({"id": r["id"], "file": out.name, "original": r["path"], "kind": r["kind"], "taken": r["taken"],
-                         "score": r["es"], "category": r["category"], "event": r["event"], "trimmed": trimmed,
+                         "score": r["es"], "category": r["category"], "event": r["event"], "trimmed": trimmed, "edited": edited,
                          "width": r["w"], "height": r["h"], "seconds": r["dur"], "tags": (r["tags"] or "").split("|")})
     (dest / "manifest.json").write_text(json.dumps(manifest, indent=1), encoding="utf-8")
     (dest / "README for Claude.md").write_text(f"""# Media Sorter export: {name}
@@ -675,7 +765,8 @@ To send changes back to the library, write `apply.json` in this folder as a list
 
 One Undo in the dashboard reverses the whole import.
 """, encoding="utf-8")
-    return {"folder": str(dest), "files": len(manifest), "trimmed": sum(m["trimmed"] for m in manifest)}
+    return {"folder": str(dest), "files": len(manifest), "trimmed": sum(m["trimmed"] for m in manifest),
+            "edited": sum(m["edited"] for m in manifest)}
 
 
 def relocate(ids, to_review):
@@ -780,6 +871,9 @@ def where(p):
         if p.get(key):
             w.append(sql)
             a.append(p[key])
+    if p.get("ids"):  # just these files (the Project view)
+        w.append(f"id {IN}")
+        a.append(json.dumps([int(x) for x in p["ids"].split(",") if x.isdigit()]))
     for tok in p.get("q", "").lower().split()[:8]:
         w.append("(lower(path) LIKE ? OR lower(event) LIKE ? OR lower(category) LIKE ? "
                  "OR id IN (SELECT media_id FROM tags WHERE tag LIKE ?) "
@@ -879,6 +973,7 @@ def item(mid):
     d["faces"] = [dict(x) for x in c.execute("SELECT person, blink FROM faces WHERE media_id=?", (mid,))]
     dead = c.execute("SELECT dead FROM ai WHERE media_id=?", (mid,)).fetchone()
     d["dead"] = json.loads(dead[0]) if dead and dead[0] else None
+    d["edit"], d["focus"], d["filters"] = edit(mid), list(focus(mid)), FILTERS
     cap = c.execute("SELECT text FROM captions WHERE media_id=?", (mid,)).fetchone()
     d["caption"] = cap[0] if cap else ""
     said = c.execute("SELECT segs FROM transcripts WHERE media_id=?", (mid,)).fetchone()
@@ -958,9 +1053,11 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def send_json(self, obj, code=200):
-        body = json.dumps(obj).encode()
+        self.send_bytes(json.dumps(obj).encode(), "application/json", code)
+
+    def send_bytes(self, body, ctype, code=200):
         self.send_response(code)
-        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -1055,6 +1152,10 @@ class Handler(BaseHTTPRequestHandler):
                 r = db().execute("SELECT path,tkey,dur,kind,codec FROM media WHERE id=?", (int(parts[1]),)).fetchone()
                 if r and parts[0] == "view":  # falls back to the small thumbnail when the drive is unplugged
                     out = screen(r) if r["kind"] == "photo" else None
+                    if out and p.get("look"):  # the same picture with a look applied, for the viewer
+                        buf = io.BytesIO()
+                        look(Image.open(out), clean_look(json.loads(p["look"]))).save(buf, "JPEG", quality=88)
+                        return self.send_bytes(buf.getvalue(), "image/jpeg")
                     return self.send_file(out or DATA / "thumbs" / (r["tkey"] + ".jpg"), "image/jpeg")
                 if r and r["kind"] == "video" and parts[0] == "play":
                     out = playable(r)
@@ -1097,7 +1198,10 @@ class Handler(BaseHTTPRequestHandler):
                 import reel
                 view = {k: str(v) for k, v in (b.get("view") or {}).items() if k in ("cat", "event", "grp", "tag", "q", "score")}
                 out = reel.make(str(b.get("template", "")), ids, view, "random" if b.get("pick") == "random" else "best",
-                                bool(b.get("fresh")), b.get("name", ""), bool(b.get("ordered")))
+                                bool(b.get("fresh")), b.get("name", ""), bool(b.get("ordered")),
+                                str(b.get("shape") or "vertical"), str(b.get("move") or ""))
+            elif path == "/api/edit":
+                out = set_edit(ids, b)
             elif path == "/api/undo":
                 out = {"undone": undo()}
             elif path == "/api/scan":
