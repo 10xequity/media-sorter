@@ -1,6 +1,6 @@
 # Media Sorter
 
-**Version** 0.9.0 (video shapes, framing point, trim, photo looks) · **Date** 2026-11-20 · **Status** Working; AI tags are a first pass, remote access not yet switched on · **Supersedes** 0.8.0
+**Version** 0.10.0 (send to someone, Instagram check, cloud photo folders, security and speed fixes) · **Date** 2026-11-21 · **Status** Working; AI tags are a first pass, remote access not yet switched on · **Supersedes** 0.9.0
 
 Scans photo and video folders, scores each file 0–5, finds exact duplicates, keeps
 shots taken together in one group, and gives you a dashboard to search, tag, rate,
@@ -62,6 +62,18 @@ http://localhost:8765. "Quit app" in the dashboard stops it. Problems are writte
   (shown from memory) and are never marked missing.
 - Every scan is recorded; the history is at the bottom of the Folders dialog.
 
+## Photos kept in Google Drive, iCloud, OneDrive or Dropbox
+
+The folder picker ("Folders") lists these first when their sync app is installed on this computer: iCloud Photos,
+the Mac Photos library (its `originals` folder), iCloud Drive, OneDrive pictures, Dropbox, and Google Drive (on
+Windows, Google Drive is a drive of its own in the drive list). Tick the folder and it is scanned like any other.
+
+- Files the service keeps online-only are downloaded as they are scanned, so pick the folders you need, not everything.
+- **Google Photos has no folder on a computer.** Download the albums you want from photos.google.com (or Google
+  Takeout) into a folder and add that folder.
+- The Mac Photos library is read-only here: the app never changes it, and "move to review" is best not used on it.
+  Reading it may need "Full Disk Access" for the app in Mac settings (untested: no Mac here).
+
 ## Updates
 
 When a newer version is published, an **Update to x.y.z** button appears in the header. It downloads the new program
@@ -91,8 +103,16 @@ of models into `models/` (from Hugging Face and Google's model storage); after t
 
 ## Marking photos you have already posted
 
-Put the pictures from an account into a folder (Instagram's own "Download your information" export works),
-then run `python ai.py --posted "<folder>" <account name>`. Library photos that appear in that folder get a blue
+"Instagram" in the header lists the accounts being checked: how many of each account's post pictures are saved on
+this computer, the date of the newest, and how many library photos are marked. Add an account by name or profile
+address; each gets a folder in `data/instagram/`. "Compare with the library now" marks the matches.
+
+Instagram does not let an app read posts by itself, so the pictures get into that folder one of two ways: ask
+Claude "check Instagram for new posts" (it opens each account in the browser and saves the post pictures), or
+unzip Instagram's own "Download your information" export there. To stop checking an account, delete its folder
+by hand; the app never deletes anything itself.
+
+The same check from the command line: `python ai.py --posted "<folder>" <account name>`. Library photos that appear in that folder get a blue
 "Posted" badge and the tags `posted` and `posted <account name>`; "Already posted" appears in the left rail.
 Cropped, resized and recompressed copies still match. In a test on 48 simulated Instagram crops it found 46,
 and wrongly marked one neighbouring burst frame. Edited versions of the same photo are marked too.
@@ -114,6 +134,22 @@ order they were taken, and the folder opens. Drag that folder into CapCut or Can
 If the selection has videos you can choose trimmed copies, which cut out the stretches where nothing moves.
 Trimmed copies are re-encoded at high quality; the originals are untouched.
 Photos you gave a look (below) are exported with it, and videos with marked pieces are exported as just those pieces.
+
+## Sending files to someone
+
+Tick the files, then "Send" (bottom bar or Project panel). Copies are sent; the library is not changed.
+
+- **Size:** "Email size" sends photos about 2000 pixels wide (roughly 0.3 MB each instead of 5 to 6 MB), with any
+  look you gave them. "Full size" sends the originals (or a full-size edited copy). Videos always go as they are.
+- **Share…** opens the device's own share menu (Mail, Messages, AirDrop, Nearby Share) with the pictures attached.
+  It takes the first 30 files and only shows in browsers that have a share menu (Chrome and Edge on Windows,
+  Safari and Chrome on phones). Getting many files ready can take a few seconds; if the menu does not open,
+  press Share once more.
+- **Save as one file** puts everything into one zip in `exports/send/`, opens that folder, and offers a download
+  link and a "Start an email" link. A web page cannot attach a file for you: drag the zip onto the email.
+  Gmail carries up to 25 MB per email; the dialog warns when the file is bigger.
+
+Zips stay in `exports/send/` until you delete them.
 
 ## Framing, look and trim (in the viewer)
 
@@ -166,6 +202,27 @@ The app only answers on this computer. To reach it from the fieldhouse, install 
 network between your own devices) on both computers, then add this computer's Tailscale name to
 `allowed_hosts` in `config.json` and share port 8765 over Tailscale. Only devices signed in to your Tailscale
 account can reach it. The exact Tailscale command is unverified until it is installed here.
+
+## Security checks (run 2026-11-21)
+
+An attack script was run against the app on this computer: 102 checks, covering requests from other websites,
+reading files outside the library, database injection through every filter, malformed input, writing outside the
+exports folder, leaking the saved AI key, and stalled connections. Eight weaknesses were found and fixed; all 102
+pass in 0.10.0:
+
+- two malformed requests crashed the request instead of being refused;
+- a device reaching the app through the private network could have installed an "update" from a file path it
+  named, and could open files in programs on this computer's screen; both are now limited to someone at this computer;
+- the page had no protection against being framed or loading outside scripts; it now forbids both;
+- a connection that stalled was kept open for good; it is now dropped after 30 seconds.
+
+Not covered: the app has no sign-in of its own. Once remote access is switched on, every device on your private
+network can use it fully, so only add devices you trust.
+
+Load, measured the same day: with 32 requests at once the app answered 144 a second with none failing. On a
+test copy grown to 163,000 files, the first page still opens in about 2 seconds stacked (instantly unstacked) and
+the summary numbers take about 3 seconds (they took 10 before this version). Up to roughly 50,000 files
+everything stays under a second.
 
 ## What it touches
 

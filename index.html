@@ -128,10 +128,17 @@ progress { width: 140px; height: 8px; accent-color: var(--ball); }
 #plist img { width: 64px; height: 48px; object-fit: cover; border-radius: 4px; display: block; }
 #plist .mv { display: flex; gap: 4px; justify-content: end; }
 #plist .mv button { width: 32px; height: 32px; padding: 0; }
-#randbox { width: min(520px, 94vw); height: auto; padding: 22px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
-#randbox[open] { display: grid; grid-template-columns: 1fr; gap: 14px; }
-#randbox::backdrop { background: rgba(5, 9, 13, .7); }
-#randbox label.line, #reelbox label.line { display: grid; gap: 4px; color: var(--mute); }
+#sendout a { color: var(--ink, inherit); background: var(--raised); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; text-decoration: none; }
+#sendout { display: grid; gap: 10px; }
+#sendbox > *, #sendout > * { min-width: 0; overflow-wrap: anywhere; }
+#sendbox select { width: 100%; }
+#instabox table { width: 100%; border-collapse: collapse; }
+#instabox th, #instabox td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); }
+#randbox, #sendbox, #instabox { width: min(520px, 94vw); height: fit-content; max-height: 92vh; overflow-y: auto; padding: 22px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+#instabox { width: min(640px, 94vw); }
+#randbox[open], #sendbox[open], #instabox[open] { display: grid; grid-template-columns: 1fr; gap: 14px; }
+#randbox::backdrop, #sendbox::backdrop, #instabox::backdrop { background: rgba(5, 9, 13, .7); }
+#randbox label.line, #reelbox label.line, #sendbox label.line { display: grid; gap: 4px; color: var(--mute); }
 #vload { position: absolute; top: 0; left: 0; right: 0; height: 3px; overflow: hidden; z-index: 2; }
 #stage img.soft { filter: blur(3px); }
 #bar strong { font: 600 18px var(--display); margin-right: 6px; font-variant-numeric: tabular-nums; }
@@ -141,7 +148,7 @@ progress { width: 140px; height: 8px; accent-color: var(--ball); }
 .rate button:hover, .rate button[aria-pressed="true"] { background: var(--ball); color: #1b1600; }
 .gap { flex: 1; }
 
-#reelbox { width: min(580px, 94vw); height: auto; max-height: 92vh; overflow-y: auto; padding: 22px; border: 1px solid var(--line);
+#reelbox { width: min(580px, 94vw); height: fit-content; max-height: 92vh; overflow-y: auto; padding: 22px; border: 1px solid var(--line);
   border-radius: 12px; background: var(--panel); }
 #reelbox[open] { display: grid; grid-template-columns: 1fr; gap: 14px; }
 #reelbox::backdrop { background: rgba(5, 9, 13, .7); }
@@ -159,7 +166,7 @@ progress { width: 140px; height: 8px; accent-color: var(--ball); }
   border-left: 3px solid var(--ball); border-radius: 8px; background: var(--panel); }
 #notice > div.off { border-left-color: var(--bad); }
 #notice span { flex: 1; min-width: 200px; }
-#folders { width: min(720px, 96vw); height: auto; max-height: 92vh; overflow-y: auto; padding: 22px; border: 1px solid var(--line);
+#folders { width: min(720px, 96vw); height: fit-content; max-height: 92vh; overflow-y: auto; padding: 22px; border: 1px solid var(--line);
   border-radius: 12px; background: var(--panel); }
 #folders[open] { display: grid; grid-template-columns: 1fr; gap: 14px; }
 #folders::backdrop { background: rgba(5, 9, 13, .7); }
@@ -179,7 +186,7 @@ progress { width: 140px; height: 8px; accent-color: var(--ball); }
 #scanlog { width: 100%; border-collapse: collapse; font-size: 13px; }
 #scanlog td, #scanlog th { text-align: left; padding: 3px 10px 3px 0; color: var(--mute); font-weight: 400; }
 #scanlog th { font-weight: 600; }
-#llmbox { width: min(620px, 94vw); height: auto; max-height: 92vh; overflow-y: auto; padding: 22px; border: 1px solid var(--line);
+#llmbox { width: min(620px, 94vw); height: fit-content; max-height: 92vh; overflow-y: auto; padding: 22px; border: 1px solid var(--line);
   border-radius: 12px; background: var(--panel); }
 #llmbox[open] { display: grid; grid-template-columns: 1fr; gap: 14px; }
 #llmbox::backdrop { background: rgba(5, 9, 13, .7); }
@@ -187,7 +194,7 @@ progress { width: 140px; height: 8px; accent-color: var(--ball); }
 #llmbox .opt:has(input:checked) { border-color: var(--ball); background: var(--raised); }
 #llmbox .opt small { grid-column: 2; color: var(--mute); }
 #llmbox label.line { display: grid; gap: 4px; color: var(--mute); }
-#events { width: min(980px, 96vw); height: auto; max-height: 92vh; overflow-y: auto; padding: 22px; border: 1px solid var(--line);
+#events { width: min(980px, 96vw); height: fit-content; max-height: 92vh; overflow-y: auto; padding: 22px; border: 1px solid var(--line);
   border-radius: 12px; background: var(--panel); }
 #events[open] { display: grid; grid-template-columns: 1fr; gap: 14px; }
 #events::backdrop { background: rgba(5, 9, 13, .7); }
@@ -273,6 +280,7 @@ kbd { background: var(--raised); border-radius: 3px; padding: 0 5px; font: 12px 
       <span class="grp"><b>Library</b>
         <button id="scan" title="Read new and changed files in the chosen folders">Scan for new files</button>
         <button id="pick" title="Choose which folders and drives are scanned">Folders</button>
+        <button id="insta" title="Mark the photos that are already on your Instagram accounts">Instagram</button>
         <button id="evnames" title="Name each day of photos after the event on your calendar">Event names</button>
         <button id="llmset" title="Optional: connect a large AI model that writes captions and extra tags">AI services</button>
         <button id="airun" title="Tags, people, closed eyes and video dead time. Runs on this computer only.">Run AI</button></span>
@@ -309,6 +317,7 @@ kbd { background: var(--raised); border-radius: 3px; padding: 0 5px; font: 12px 
   <input id="bevent" placeholder="Set event, Enter" aria-label="Set event name for selected" list="eventlist">
   <datalist id="eventlist"></datalist>
   <span class="gap"></span>
+  <button id="send" title="Email or text these files to someone, or save them as one file to hand over">Send</button>
   <button id="export" title="Copy the selected files into one folder for CapCut, Edits or Canva">Export copies</button>
   <button id="toreview">Move to review folder</button>
   <button id="restore">Put back</button>
@@ -320,7 +329,7 @@ kbd { background: var(--raised); border-radius: 3px; padding: 0 5px; font: 12px 
   <div id="pbody">
     <div class="path" id="phelp">Tick photos or drag them here, from any folder or search. They stay collected while you browse. Drag to put them in order.</div>
     <ol id="plist"></ol>
-    <div class="row"><button class="primary" id="pmake">Make a video</button><button id="pshow" title="Show only the project's files in the main view, to frame or edit each one">Show in grid</button><button id="pexport">Export copies</button>
+    <div class="row"><button class="primary" id="pmake">Make a video</button><button id="pshow" title="Show only the project's files in the main view, to frame or edit each one">Show in grid</button><button id="psend" title="Email or text these files to someone, or save them as one file to hand over">Send</button><button id="pexport">Export copies</button>
       <button id="pdescribe" title="Have the connected AI service write a caption and tags for these photos">Describe with AI</button><button id="pclear">Clear</button></div>
   </div>
 </aside>
@@ -371,6 +380,29 @@ kbd { background: var(--raised); border-radius: 3px; padding: 0 5px; font: 12px 
     <span id="evmsg" role="status" style="align-self:center;color:var(--mute)"></span></div>
 </dialog>
 
+<dialog id="sendbox" aria-labelledby="sendtitle">
+  <h2 id="sendtitle">Send</h2>
+  <div class="path" id="sendsrc"></div>
+  <label class="line">Size<select id="sendsize">
+    <option value="email">Email size: smaller copies that send quickly (photos about 2000 pixels wide)</option>
+    <option value="full">Full size: original quality, much larger</option></select></label>
+  <div class="row"><button class="primary" id="sendshare" title="Opens this device's share menu: Mail, Messages, AirDrop, Nearby Share">Share…</button>
+    <button id="sendzip" title="Put the files into one zip file you can attach, upload or copy to a stick">Save as one file</button>
+    <button id="sendclose">Close</button></div>
+  <div id="sendmsg" role="status" style="color:var(--mute)"></div>
+  <div id="sendout"></div>
+</dialog>
+
+<dialog id="instabox" aria-labelledby="instatitle">
+  <h2 id="instatitle">Posted on Instagram</h2>
+  <div class="path">Library photos that already appear on these accounts get a blue “Posted” badge and show under “Already posted”. Cropped and resized copies still match. Only tags are written; no file is touched.</div>
+  <table id="instatable"></table>
+  <div class="row"><input id="instaname" placeholder="Add an account: its name or profile address" aria-label="Instagram account to add" style="flex:1"><button id="instaadd">Add</button></div>
+  <div class="path">Getting the pictures: Instagram does not let an app read posts by itself. Ask Claude “check Instagram for new posts”; it opens each account in the browser and saves the post pictures into that account's folder inside data/instagram. Or unzip Instagram's “Download your information” export into that folder. Then compare.</div>
+  <div class="row"><button class="primary" id="instago">Compare with the library now</button><button id="instaclose">Close</button>
+    <span id="instamsg" role="status" style="align-self:center;color:var(--mute)"></span></div>
+</dialog>
+
 <dialog id="randbox" aria-labelledby="randtitle">
   <h2 id="randtitle">Random pick</h2>
   <div class="path" id="randsrc"></div>
@@ -389,6 +421,7 @@ kbd { background: var(--raised); border-radius: 3px; padding: 0 5px; font: 12px 
   <h3>Scanning now</h3>
   <div id="chosen"></div>
   <h3>Add a folder: open a drive, then tick the folders you want</h3>
+  <div class="path">iCloud Photos, the Mac Photos library, OneDrive, Dropbox and Google Drive folders are listed first when their sync app is installed on this computer (on Windows, Google Drive is a drive of its own). Files kept online-only are downloaded as they are scanned. Google Photos has no synced folder: download the albums from photos.google.com into a folder and add that folder.</div>
   <div id="tree" role="tree" aria-label="Drives and folders"></div>
   <div class="row"><button class="primary" id="foldsave">Save and check for new files</button><button id="foldclose">Close</button>
     <span id="foldmsg" role="status" style="align-self:center;color:var(--mute)"></span></div>
@@ -434,7 +467,7 @@ const gb = b => b > 1e12 ? (b / 1e12).toFixed(2) + ' TB' : b >= 1e9 ? (b / 1e9).
 const clock = s => s == null ? '' : s >= 3600 ? `${Math.floor(s / 3600)}:${String(Math.floor(s % 3600 / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}` : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 const base = p => p.split(/[\\/]/).pop();
 
-const S = { view: 'active', kind: '', cat: '', event: '', grp: '', tag: '', q: '', score: '', sort: 'date',
+const S = { view: 'active', proj: '', kind: '', cat: '', event: '', grp: '', tag: '', q: '', score: '', sort: 'date',
             items: [], total: 0, loading: false, sel: new Set(), anchor: null, stats: null, open: -1 };
 try { S.sel = new Set(JSON.parse(localStorage.getItem('project') || '[]').filter(Number.isInteger)); } catch (e) {}  // the project survives a restart
 document.querySelector('main').append($('bar'));
@@ -493,7 +526,7 @@ async function load(reset = true) {
     const r = await api('/api/media?' + params({ offset: S.items.length }));
     S.total = r.total;
     r.items.forEach(it => { S.items.push(it); $('grid').append(tile(it, S.items.length - 1)); });
-    $('count').textContent = r.smart ? `${num(r.total)} closest matches by look, best first` : `${num(r.total)} ${r.total === 1 ? 'file' : 'files'}`;
+    $('count').textContent = r.smart ? `${num(r.total)} closest matches by look, best first` : r.items.some(it => it.stack > 1) ? `${num(r.total)} tiles (sequences stacked)` : `${num(r.total)} ${r.total === 1 ? 'file' : 'files'}`;
     const empty = $('empty');
     empty.hidden = r.total > 0;
     if (!r.total) empty.textContent = S.stats && !S.stats.photos && !S.stats.videos
@@ -519,6 +552,7 @@ function go(patch) {   // the project (your ticked files) is kept while you move
 }
 addEventListener('popstate', e => { Object.assign(S, HOME, e.state || {}); refresh(); });
 $('back').onclick = () => history.back();
+if (history.state) Object.assign(S, HOME, history.state);  // reloading the page keeps you where you were, and Back still makes sense
 $('stack').onchange = () => load();
 
 async function refresh(reload = true) {
@@ -562,6 +596,7 @@ async function refresh(reload = true) {
   $('airun').disabled = busy || !st.ai_todo;
   $('airun').textContent = st.ai_todo ? `Run AI on ${num(st.ai_todo)} new` : 'AI up to date';
   $('scanmsg').textContent = st.scan.running ? `Scanning ${num(st.scan.done)} of ${num(st.scan.total)} ${st.scan.current}`
+    : st.ai.running && st.ai.current === 'Comparing posts' ? `Comparing Instagram post ${num(st.ai.done + 1)} of ${num(st.ai.total)} with the library`
     : st.ai.running ? `AI pass ${num(st.ai.done)} of ${num(st.ai.total)} ${st.ai.current}`
     : st.llm.running ? `Describing photo ${num(st.llm.done + 1)} of ${num(st.llm.total)}`
     : st.llm.error ? `Describing stopped: ${st.llm.error}`
@@ -606,7 +641,7 @@ function drawProject() {
   try { localStorage.setItem('project', JSON.stringify(ids.slice(0, 5000))); } catch (e) {}
   $('pcount').textContent = num(ids.length);
   $('phelp').hidden = ids.length > 0;
-  for (const b of ['pmake', 'pexport', 'pclear', 'pdescribe', 'pshow']) $(b).disabled = !ids.length;
+  for (const b of ['pmake', 'pexport', 'pclear', 'pdescribe', 'pshow', 'psend']) $(b).disabled = !ids.length;
   $('plist').replaceChildren(...ids.slice(0, 200).map((id, n) => {
     const li = h('li', { draggable: true, 'data-id': id },
       h('span', {}, String(n + 1)), h('button', { class: 'open', title: 'Open to frame or edit', 'aria-label': `Open item ${n + 1}`, onclick: () => openId(id) },
@@ -639,6 +674,79 @@ async function openId(id) {   // open a project file in the viewer; if it is not
   if (j >= 0) openViewer(j);
 }
 $('pexport').onclick = () => $('export').click();
+
+// ----- send to someone -----
+const SEND = { files: [], key: '' };
+$('send').onclick = $('psend').onclick = () => {
+  const n = S.sel.size, share = !!(navigator.canShare && navigator.share);
+  $('sendsrc').textContent = `${num(n)} file${n === 1 ? '' : 's'} from the project. Copies are sent; your library is not changed.`;
+  $('sendsize').value = mem('sendsize') || 'email';
+  $('sendshare').hidden = !share;
+  $('sendmsg').textContent = !share ? 'This browser has no share menu here. Use “Save as one file”, then attach that file to your email or message.'
+    : n > 30 ? 'The share menu takes the first 30 files. For all of them, use “Save as one file”.' : '';
+  $('sendout').replaceChildren(); $('sendbox').showModal();
+};
+$('sendsize').onchange = e => mem('sendsize', e.target.value);
+$('sendclose').onclick = () => $('sendbox').close();
+$('sendshare').onclick = async () => {
+  const ids = [...S.sel].slice(0, 30), size = $('sendsize').value, key = size + ids.join();
+  try {
+    if (SEND.key !== key) {  // fetch the copies once; a second press (see below) reuses them
+      SEND.key = ''; SEND.files = [];
+      for (const [i, id] of ids.entries()) {
+        $('sendmsg').textContent = `Getting file ${i + 1} of ${ids.length} ready…`;
+        const r = await fetch(`/send/${id}?size=${size}`);
+        if (!r.ok) continue;
+        const name = decodeURIComponent((r.headers.get('Content-Disposition') || '').split("UTF-8''")[1] || `file ${i + 1}`), blob = await r.blob();
+        SEND.files.push(new File([blob], name, { type: blob.type }));
+      }
+      SEND.key = key;
+    }
+    if (!SEND.files.length) throw new Error('None of these files could be read. Is their drive connected?');
+    if (!navigator.canShare({ files: SEND.files })) throw new Error('This device cannot share these files. Use “Save as one file”.');
+    await navigator.share({ files: SEND.files });
+    $('sendmsg').textContent = `${SEND.files.length} file${SEND.files.length === 1 ? '' : 's'} handed to the share menu.`;
+  } catch (e) {  // browsers only open the share menu straight after a press, and getting the files ready can outlast that
+    $('sendmsg').textContent = e.name === 'AbortError' ? 'Share cancelled.'
+      : e.name === 'NotAllowedError' ? 'The files are ready. Press Share once more. If nothing opens, use “Save as one file”.' : e.message;
+  }
+};
+$('sendzip').onclick = async () => {
+  $('sendmsg').textContent = 'Putting the files into one file…'; $('sendout').replaceChildren();
+  try {
+    const r = await api('/api/send', { ids: [...S.sel], size: $('sendsize').value }), mb = r.bytes / 1048576;
+    $('sendmsg').textContent = `${num(r.files)} file${r.files === 1 ? '' : 's'}, ${mb.toFixed(1)} MB.`
+      + (r.files < r.asked ? ` ${r.asked - r.files} could not be read and were left out.` : '')
+      + (mb > 25 ? ' That is more than most email will carry (about 25 MB): choose Email size, send fewer, or upload the file to Google Drive and send its link.' : '');
+    $('sendout').replaceChildren(
+      h('div', { class: 'path' }, `Saved as ${r.folder}${r.folder.includes('\\') ? '\\' : '/'}${r.name}`),
+      h('div', { class: 'row' },
+        h('a', { href: '/sent/' + encodeURIComponent(r.name), download: r.name }, 'Download it to this device'),
+        h('a', { href: `mailto:?subject=${encodeURIComponent(`${r.files} photos for you`)}&body=${encodeURIComponent('The photos are in the attached file.')}` }, 'Start an email')),
+      h('div', { class: 'path' }, 'A web page cannot attach a file for you. Start the email, then drag the saved file onto it or use its paper-clip button.'));
+  } catch (e) { $('sendmsg').textContent = e.message; }
+};
+
+// ----- photos already on Instagram -----
+function drawInsta(list) {
+  $('instatable').replaceChildren(h('tr', {}, ...['Account', 'Saved pictures', 'Newest saved', 'Library photos marked'].map(x => h('th', {}, x))),
+    ...(list.length ? list.map(a => h('tr', {}, ...['@' + a.handle, num(a.pictures), a.newest || 'none yet', num(a.marked)].map(x => h('td', {}, x))))
+      : [h('tr', {}, h('td', { colspan: 4 }, 'No accounts yet. Add one below.'))]));
+  $('instago').disabled = !list.some(a => a.pictures);
+}
+$('insta').onclick = async () => {
+  try { drawInsta(await api('/api/instagram')); $('instamsg').textContent = ''; $('instabox').showModal(); } catch (e) { toast(e.message); }
+};
+$('instaadd').onclick = async () => {
+  try { drawInsta((await api('/api/instagram', { handle: $('instaname').value })).accounts); $('instaname').value = ''; $('instamsg').textContent = 'Added.'; }
+  catch (e) { $('instamsg').textContent = e.message; }
+};
+$('instaname').onkeydown = e => { if (e.key === 'Enter') $('instaadd').click(); };
+$('instaclose').onclick = () => $('instabox').close();
+$('instago').onclick = async () => {
+  try { await api('/api/instagram', {}); $('instabox').close(); toast('Comparing posts with the library…'); refresh(false); }
+  catch (e) { $('instamsg').textContent = e.message; }
+};
 
 // ----- optional AI service -----
 let LLM = null;

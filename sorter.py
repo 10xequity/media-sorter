@@ -9,12 +9,12 @@ Needs Python 3.12+, Pillow, numpy, and ffmpeg/ffprobe on PATH.
   python ai.py                the AI pass: tags, people, closed eyes, video dead time (see ai.py)
 """
 import argparse, csv, ctypes, hashlib, io, json, math, mimetypes, os, re, shutil, sqlite3
-import subprocess, sys, tempfile, threading, time
+import socket, subprocess, sys, tempfile, threading, time, zipfile
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs, unquote
+from urllib.parse import urlparse, parse_qs, quote, unquote
 
 import numpy as np
 from PIL import Image, ImageOps
@@ -340,10 +340,24 @@ def set_roots(paths):
     return root_status()
 
 
+def places():
+    """Folders that photo services keep in step on this computer, when their sync app is installed.
+    (Google Drive on Windows is a drive of its own and shows in the drive list. Google Photos has no such folder.)"""
+    home = Path.home()
+    found = [("iCloud Photos", home / "Pictures" / "iCloud Photos"),
+             ("Apple Photos library", home / "Pictures" / "Photos Library.photoslibrary" / "originals"),
+             ("iCloud Drive", home / "Library" / "Mobile Documents" / "com~apple~CloudDocs"),
+             ("iCloud Drive", home / "iCloudDrive"),
+             ("OneDrive pictures", Path(os.environ.get("OneDrive") or home / "OneDrive") / "Pictures"),
+             ("Dropbox", home / "Dropbox"),
+             *(("Google Drive", p) for p in (home / "Library" / "CloudStorage").glob("GoogleDrive-*"))]
+    return [{"path": str(p), "name": f"{name}  ({p})"} for name, p in found if p.is_dir()]
+
+
 def tree(path):
     """The folders inside a folder (or the drives, for an empty path), for the scan-folder picker."""
     if not path:
-        return {"path": "", "dirs": [{"path": d, "name": f"{d}  {volume(d)[1] or ''}".strip()} for d in drives()]}
+        return {"path": "", "dirs": places() + [{"path": d, "name": f"{d}  {volume(d)[1] or ''}".strip()} for d in drives()]}
     p = Path(path)
     try:
         dirs = sorted((x for x in p.iterdir() if x.is_dir() and x.name[0] not in ".$"
@@ -584,6 +598,41 @@ def calendar():
     return out
 
 
+def insta():
+    """The Instagram accounts being checked: one folder of saved post pictures each, in data/instagram."""
+    base, c, out = DATA / "instagram", db(), []
+    for d in sorted(x for x in (base.iterdir() if base.is_dir() else []) if x.is_dir()):
+        when = [p.stat().st_mtime for p in d.rglob("*") if p.suffix.lower() in PHOTO]
+        out.append({"handle": d.name, "pictures": len(when),
+                    "newest": time.strftime("%Y-%m-%d", time.localtime(max(when))) if when else None,
+                    "marked": c.execute("SELECT count(*) FROM tags WHERE tag=? AND src='posted'", ("posted " + d.name,)).fetchone()[0]})
+    return out
+
+
+def insta_add(handle):
+    """Start tracking an account, given as a name, @name or profile address. Makes its (empty) folder."""
+    s = str(handle).strip().lower()
+    m = re.fullmatch(r"(?:https?://)?(?:www\.)?instagram\.com/([a-z0-9._]{1,30})/?(?:\?.*)?|@?([a-z0-9._]{1,30})", s)
+    name = m and (m.group(1) or m.group(2))
+    if not name or name.strip(".") == "":
+        raise ValueError("That does not look like an Instagram name. Type it like coboomvb or paste the profile address.")
+    (DATA / "instagram" / name).mkdir(parents=True, exist_ok=True)
+    return insta()
+
+
+def insta_check():
+    """Compare every account's saved pictures with the library and mark the matches as posted. Tags only."""
+    import ai
+    try:
+        for a in insta():
+            if a["pictures"]:  # an empty folder is skipped, so marks from an earlier check are kept
+                ai.mark_posted(DATA / "instagram" / a["handle"], a["handle"])
+    except Exception as e:
+        ai.state["error"] = f"{type(e).__name__}: {e}"
+    finally:
+        ai.state.update(running=False, current="")
+
+
 def words(text):
     return {w for w in re.findall(r"[a-z]+|\d+", text.lower()) if len(w) > 1 and w not in STOP_WORDS and not re.fullmatch(r"20\d\d|\d\d", w)}
 
@@ -769,6 +818,48 @@ One Undo in the dashboard reverses the whole import.
             "edited": sum(m["edited"] for m in manifest)}
 
 
+def sendable(r, small):
+    """One file ready to send: (file name, bytes or path). Photos carry their look; "small" is the 2000-pixel
+    screen copy, which emails and texts quickly. Videos go as they are. The original is never changed."""
+    name, e = os.path.basename(r["path"]), edit(r["id"])
+    if r["kind"] == "photo" and (small or e["look"]):
+        try:
+            src = screen(r) if small else None
+            if src and not e["look"]:
+                return Path(name).stem + ".jpg", src
+            im = Image.open(src) if src else ImageOps.exif_transpose(Image.open(r["path"])).convert("RGB")
+            buf = io.BytesIO()
+            look(im, e["look"]).save(buf, "JPEG", quality=88 if small else 95)
+            return Path(name).stem + ".jpg", buf.getvalue()
+        except Exception:
+            pass  # cannot be read as a picture right now: send the file as it is
+    return name, Path(r["path"])
+
+
+def bundle(ids, small=True):
+    """Put the chosen files into one zip in exports/send, in the order given, ready to attach or hand over."""
+    got = {r["id"]: r for r in db().execute(
+        f"SELECT id,path,tkey,kind FROM media WHERE status='active' AND id {IN}", (json.dumps(ids),))}
+    rows = [got[i] for i in dict.fromkeys(ids) if i in got][:2000]
+    if not rows:
+        raise ValueError("Choose some files to send first.")
+    out = EXPORTS / "send" / time.strftime("Photos %Y-%m-%d %H%M%S.zip")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    n = 0
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_STORED) as z:  # photos and videos are already compressed
+        for r in rows:
+            name, src = sendable(r, small)
+            try:
+                if isinstance(src, bytes):
+                    z.writestr(f"{n + 1:03d}_{name}", src)
+                else:
+                    z.write(src, f"{n + 1:03d}_{name}")
+                n += 1
+            except OSError:
+                continue  # drive unplugged or file gone: leave it out and say how many made it
+    return {"name": out.name, "folder": str(out.parent), "files": n, "asked": len(rows), "bytes": out.stat().st_size}
+
+
 def relocate(ids, to_review):
     """Move files into the review folder, or back where they came from. Returns how many moved."""
     c, moved = db(), 0
@@ -927,29 +1018,32 @@ def stats():
     one = lambda sql: c.execute(sql).fetchone()[0] or 0
     pairs = lambda sql: [list(r) for r in c.execute(sql)]
     act = "FROM media WHERE status='active'"
+    # One pass over the library and one over the tags, however many numbers are wanted: this runs every
+    # second and a half during a scan, and separate queries took 10 seconds on a 160,000-file library.
+    m = [x or 0 for x in c.execute(f"SELECT sum(kind='photo'), sum(kind='video'), sum(size), sum(dur), sum({FLAG}), "
+                                   f"sum(dup_of IS NOT NULL), sum(err IS NOT NULL) {act}").fetchone()]
+    tg = c.execute("SELECT tag, src, count(*) FROM tags JOIN media ON id=media_id AND status='active' GROUP BY 1, 2").fetchall()
+
+    def top(keep, limit=None, by_name=False):
+        n = {}
+        for tag, src, k in tg:
+            if keep(tag, src):
+                n[tag] = n.get(tag, 0) + k
+        return [list(x) for x in sorted(n.items(), key=(lambda x: x[0]) if by_name else (lambda x: -x[1]))[:limit]]
     return {
-        "photos": one(f"SELECT count(*) {act} AND kind='photo'"),
-        "videos": one(f"SELECT count(*) {act} AND kind='video'"),
-        "bytes": one(f"SELECT sum(size) {act}"),
-        "hours": one(f"SELECT sum(dur) {act}") / 3600,
-        "flagged": one(f"SELECT count(*) {act} AND {FLAG}"),
-        "dups": one(f"SELECT count(*) {act} AND dup_of IS NOT NULL"),
+        "photos": m[0], "videos": m[1], "bytes": m[2], "hours": m[3] / 3600, "flagged": m[4], "dups": m[5],
         "review": one("SELECT count(*) FROM media WHERE status LIKE 'review%'"),
         "review_bytes": one("SELECT sum(size) FROM media WHERE status LIKE 'review%'"),
-        "unreadable": one(f"SELECT count(*) {act} AND err IS NOT NULL"),
+        "unreadable": m[6],
         "scores": pairs(f"SELECT {ES}, count(*) {act} AND err IS NULL GROUP BY 1"),
         "categories": pairs(f"SELECT category, count(*) {act} AND category IS NOT NULL GROUP BY 1"),
         "events": pairs(f"SELECT event, count(*), sum(kind='photo'), sum(kind='video') {act} "
                         "GROUP BY 1 ORDER BY max(taken) DESC LIMIT 300"),
-        "tags": pairs("SELECT tag, count(*) FROM tags JOIN media ON id=media_id AND status='active' "
-                      "GROUP BY 1 ORDER BY 2 DESC LIMIT 40"),
-        "people": pairs("SELECT tag, count(*) FROM tags JOIN media ON id=media_id AND status='active' "
-                        "WHERE src='face' AND tag!='eyes closed' GROUP BY 1 ORDER BY 2 DESC LIMIT 80"),
-        "ai_tags": pairs("SELECT tag, count(*) FROM tags JOIN media ON id=media_id AND status='active' "
-                         "WHERE src IN ('ai','video') GROUP BY 1 ORDER BY 2 DESC"),
-        "posted": pairs("SELECT tag, count(*) FROM tags JOIN media ON id=media_id AND status='active' "
-                        "WHERE src='posted' GROUP BY 1 ORDER BY tag"),
-        "eyes": one("SELECT count(*) FROM tags JOIN media ON id=media_id AND status='active' WHERE tag='eyes closed'"),
+        "tags": top(lambda t, s: True, 40),
+        "people": top(lambda t, s: s == "face" and t != "eyes closed", 80),
+        "ai_tags": top(lambda t, s: s in ("ai", "video")),
+        "posted": top(lambda t, s: s == "posted", by_name=True),
+        "eyes": sum(k for t, s, k in tg if t == "eyes closed"),
         "ai_todo": one(f"SELECT count(*) {act} AND err IS NULL AND (id NOT IN (SELECT media_id FROM ai) "
                        "OR (kind='video' AND id NOT IN (SELECT media_id FROM transcripts)))"),
         "ai": sys.modules["ai"].state if "ai" in sys.modules else {"running": False},
@@ -1048,21 +1142,37 @@ def preview(row):
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
+    timeout = 30  # a connection that says nothing for this long is dropped, so stalled ones cannot pile up
 
     def log_message(self, *a):
         pass
 
+    def end_headers(self):
+        # Nothing from other sites may load in the page, frame it, or guess a file's type.
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Security-Policy", "default-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; "
+                         "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; "
+                         "base-uri 'none'; form-action 'none'")
+        super().end_headers()
+
+    def at_desk(self):
+        """True for someone sitting at this computer, not a device reaching it over the private network."""
+        return self.client_address[0] in ("127.0.0.1", "::1") and not self.headers.get("X-Forwarded-For")
+
     def send_json(self, obj, code=200):
         self.send_bytes(json.dumps(obj).encode(), "application/json", code)
 
-    def send_bytes(self, body, ctype, code=200):
+    def send_bytes(self, body, ctype, code=200, name=None):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
+        if name:
+            self.send_header("Content-Disposition", "attachment; filename*=UTF-8''" + quote(name))
         self.end_headers()
         self.wfile.write(body)
 
-    def send_file(self, path, ctype, cache=True):
+    def send_file(self, path, ctype, cache=True, name=None):
         try:
             size = os.path.getsize(path)
         except OSError:
@@ -1087,6 +1197,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Accept-Ranges", "bytes")
         self.send_header("Content-Length", str(end - start + 1))
         self.send_header("Cache-Control", "max-age=86400" if cache else "no-store")
+        if name:
+            self.send_header("Content-Disposition", "attachment; filename*=UTF-8''" + quote(name))
         self.end_headers()
         with open(path, "rb") as f:
             f.seek(start)
@@ -1136,13 +1248,26 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/llm":
                 import llm
                 return self.send_json(llm.status())
+            if u.path == "/api/instagram":
+                return self.send_json(insta())
+            if len(parts) == 2 and parts[0] == "sent":  # a zip made by Send, by file name only (no folders)
+                f = EXPORTS / "send" / os.path.basename(unquote(parts[1]).replace("\\", "/"))
+                if f.suffix == ".zip" and f.is_file():
+                    return self.send_file(f, "application/zip", cache=False, name=f.name)
+            if len(parts) == 2 and parts[0] == "send" and parts[1].isdigit():  # one file, ready to share
+                r = db().execute("SELECT id,path,tkey,kind FROM media WHERE status='active' AND id=?", (int(parts[1]),)).fetchone()
+                if r:
+                    name, src = sendable(r, p.get("size") != "full")
+                    ctype = mimetypes.guess_type(name)[0] or "application/octet-stream"
+                    return self.send_bytes(src, ctype, name=name) if isinstance(src, bytes) \
+                        else self.send_file(src, ctype, cache=False, name=name)
             if u.path == "/api/scans":
                 return self.send_json([dict(r) for r in db().execute("SELECT * FROM scans ORDER BY id DESC LIMIT 30")])
             if u.path == "/api/templates":
                 import reel
                 return self.send_json(reel.templates())
             if len(parts) == 2 and parts[0] == "reel":  # a finished reel, by file name only (no folders)
-                f = EXPORTS / "reels" / os.path.basename(unquote(parts[1]))
+                f = EXPORTS / "reels" / os.path.basename(unquote(parts[1]).replace("\\", "/"))
                 if f.suffix == ".mp4" and f.is_file():
                     return self.send_file(f, "video/mp4", cache=False)
             if u.path == "/api/item":
@@ -1168,7 +1293,7 @@ class Handler(BaseHTTPRequestHandler):
                 if r and r["kind"] == "video" and (out := preview(r)):
                     return self.send_file(out, "video/mp4")
             self.send_json({"error": "not found"}, 404)
-        except (ValueError, sqlite3.Error) as e:
+        except (ValueError, TypeError, AttributeError, OverflowError, sqlite3.Error) as e:  # a malformed address
             self.send_json({"error": str(e)}, 400)
 
     def do_POST(self):
@@ -1179,7 +1304,12 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"error": "forbidden"}, 403)
         try:
             n = int(self.headers.get("Content-Length") or 0)
-            b = json.loads(self.rfile.read(n) or b"{}") if 0 < n < 20_000_000 else {}
+            if n >= 20_000_000:
+                self.close_connection = True  # the body is not read, so this connection cannot be reused
+                return self.send_json({"error": "That is too much to send in one go."}, 413)
+            b = json.loads(self.rfile.read(n) or b"{}") if n > 0 else {}
+            if not isinstance(b, dict):
+                raise ValueError("expected a JSON object")
             ids = [int(i) for i in b.get("ids", [])]
             path = urlparse(self.path).path
             if path == "/api/update":
@@ -1192,8 +1322,22 @@ class Handler(BaseHTTPRequestHandler):
                 out = {"deleted": delete(ids)}
             elif path == "/api/export":
                 out = export(ids, b.get("name", ""), bool(b.get("trim")))
-                if self.client_address[0] == "127.0.0.1" and not self.headers.get("X-Forwarded-For"):
+                if self.at_desk():
                     show(out["folder"])  # show the folder, but only to someone sitting at this computer
+            elif path == "/api/send":
+                out = bundle(ids, b.get("size") != "full")
+                if self.at_desk():
+                    show(out["folder"])
+            elif path == "/api/instagram":
+                if "handle" in b:
+                    out = {"accounts": insta_add(b["handle"])}
+                else:
+                    import ai
+                    if ai.state["running"]:
+                        raise RuntimeError("The AI pass is running. Try again when it finishes.")
+                    ai.state.update(running=True, done=0, total=0, current="Comparing posts", error="")  # before replying,
+                    threading.Thread(target=insta_check, daemon=True).start()  # so the page sees it is under way
+                    out = {"started": True}
             elif path == "/api/reel":
                 import reel
                 view = {k: str(v) for k, v in (b.get("view") or {}).items() if k in ("cat", "event", "grp", "tag", "q", "score")}
@@ -1230,6 +1374,8 @@ class Handler(BaseHTTPRequestHandler):
                 out = {"started": True}
             elif path == "/api/upgrade":
                 import update as updater
+                if b.get("zip") and not self.at_desk():  # a file path names a file on THIS computer (or a network share)
+                    return self.send_json({"error": "Updating from a file can only be done at this computer."}, 403)
                 out = updater.apply(b.get("zip") or None)
                 self.send_json(out)
                 if out.get("updated"):  # start the new version, then step aside for it
@@ -1248,13 +1394,15 @@ class Handler(BaseHTTPRequestHandler):
                 import ai
                 out = {"renamed": ai.rename_person(str(b.get("old", "")), b.get("new", ""))}
             elif path == "/api/open" and ids:
+                if not self.at_desk():
+                    return self.send_json({"error": "Opening a file in its own app can only be done at this computer."}, 403)
                 r = db().execute("SELECT path FROM media WHERE id=?", (ids[0],)).fetchone()
                 show(r["path"])  # opens in your normal player or photo app
                 out = {"opened": True}
             else:
                 return self.send_json({"error": "not found"}, 404)
             self.send_json(out)
-        except (ValueError, TypeError, OSError, sqlite3.Error, RuntimeError) as e:
+        except (ValueError, TypeError, OSError, OverflowError, sqlite3.Error, RuntimeError) as e:
             self.send_json({"error": str(e)}, 400)
         except Exception as e:  # a bug: say so in the dashboard and record it in data/log.txt
             import traceback
@@ -1336,6 +1484,17 @@ def selftest():
     assert undo() == "event names" and listing({"event": f"Spring Showdown {day['date']}"})["total"] == 0
     one = listing({"stack": "1"})
     assert one["total"] <= listing({})["total"] and all(it["stack"] >= 1 for it in one["items"])
+    sid = got["sharp.png"]["id"]
+    assert sendable(c.execute("SELECT id,path,tkey,kind FROM media WHERE id=?", (sid,)).fetchone(), True)[0] == "sharp.jpg"
+    z = bundle([sid, sid, got["pocket.png"]["id"], 10 ** 9])  # repeats and unknown numbers are dropped
+    assert z["files"] == 2 and zipfile.ZipFile(EXPORTS / "send" / z["name"]).namelist() == ["001_sharp.jpg", "002_pocket.jpg"]
+    assert insta_add("https://www.instagram.com/CoBoomVB/")[0]["handle"] == "coboomvb" and insta()[0]["pictures"] == 0
+    for bad in ("../../evil", "a/b", "http://evil.com/x", ""):
+        try:
+            insta_add(bad)
+            raise AssertionError(bad)
+        except ValueError:
+            pass
     scan()  # a second scan must not redo or duplicate anything
     assert c.execute("SELECT count(*) FROM media").fetchone()[0] == 4 and scan_state["total"] == 0
     c.close()
@@ -1382,6 +1541,14 @@ if __name__ == "__main__":
             import webbrowser
             webbrowser.open(url)
         if srv:
+            # "localhost" means two addresses. Answering on only one made Windows wait 2 seconds on the other
+            # before each new connection, so answer on both. Both are this computer only.
+            class V6(ThreadingHTTPServer):
+                address_family = socket.AF_INET6
+            try:
+                threading.Thread(target=V6(("::1", CFG["port"]), Handler).serve_forever, daemon=True).start()
+            except OSError:
+                pass  # this computer has the second address switched off
             threading.Thread(target=check, daemon=True).start()
 
             def newest():
