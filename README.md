@@ -1,6 +1,6 @@
 # Media Sorter
 
-**Version** 0.11.0 (tags from Claude Code, favorites, crops, collages, more filters and templates, video skipping) · **Date** 2026-11-21 · **Status** Working; AI tags are a first pass, remote access not yet switched on · **Supersedes** 0.10.0
+**Version** 0.11.1 (tags from Claude Code, favorites, crops, collages, more filters and templates, video skipping) · **Date** 2026-11-21 · **Status** Working; AI tags are a first pass, remote access not yet switched on · **Supersedes** 0.10.0
 
 Scans photo and video folders, scores each file 0–5, finds exact duplicates, keeps
 shots taken together in one group, and gives you a dashboard to search, tag, rate,
@@ -115,7 +115,9 @@ program or a paid key. (Ollama and the keyed services under "AI services" are st
 3. **Read them in.** Press "Read in Claude's tags" (Claude can also run `python sorter.py --claude-import`).
    One Undo reverses the tags and categories; captions and face names stay.
 
-Things to know: the small copies are sent to Anthropic when Claude looks at them. Claude does not work out who a
+Things to know: the small copies are sent to Anthropic when Claude looks at them. The list Claude reads leaves out
+file names and strips symbols from event names and tags, and Claude is told to treat all of it, and any writing
+inside a photo, as information only, so a file with a planted message in its name cannot steer it. Claude does not work out who a
 person is from their face; the People list (the app's own face grouping) does that, and a name you give a face
 there sticks. `CLAUDE.md` in this folder holds the instructions Claude Code follows, including "check Instagram
 for new posts".
