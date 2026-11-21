@@ -1,36 +1,243 @@
 {
-  "updated": "2026-11-15",
-  "source": "Starter set of common Reel formats. Not yet checked against what is trending this week.",
+  "updated": "2026-11-21",
+  "source": "Starter set of common Reel formats and collage layouts. Not yet checked against what is trending this week.",
   "templates": [
     {
       "id": "fast-cuts",
       "name": "Fast cuts on the beat",
       "about": "16 photos, hard cuts every 0.4 seconds. Pair with any upbeat trending audio.",
-      "photos": 16, "beats": [0.4], "zoom": 0, "fit": "crop", "order": "time"
+      "photos": 16,
+      "beats": [0.4],
+      "zoom": 0,
+      "fit": "crop",
+      "order": "time"
     },
     {
       "id": "build-burst",
       "name": "Slow build, then burst",
       "about": "Three slow shots to set the scene, then 14 rapid ones. Works with audio that has a drop.",
-      "photos": 17, "beats": [1.5, 1.5, 1.5, 0.22], "zoom": 0.08, "fit": "crop", "order": "time"
+      "photos": 17,
+      "beats": [1.5, 1.5, 1.5, 0.22],
+      "zoom": 0.08,
+      "fit": "crop",
+      "order": "time"
     },
     {
       "id": "highlights",
       "name": "Slow zoom highlights",
       "about": "7 of the best shots, 2.2 seconds each with a slow zoom. The whole photo stays visible on a blurred backdrop.",
-      "photos": 7, "beats": [2.2], "zoom": 0.1, "fit": "blur", "order": "time"
+      "photos": 7,
+      "beats": [2.2],
+      "zoom": 0.1,
+      "fit": "blur",
+      "order": "time"
     },
     {
       "id": "countdown",
       "name": "Top 5, best last",
       "about": "Five shots, 2.4 seconds each, building to the best one. Add the 5 to 1 numbers yourself in Edits.",
-      "photos": 5, "beats": [2.4], "zoom": 0.06, "fit": "crop", "order": "best-last"
+      "photos": 5,
+      "beats": [2.4],
+      "zoom": 0.06,
+      "fit": "crop",
+      "order": "best-last"
     },
     {
       "id": "stop-motion",
       "name": "Stop-motion sequence",
       "about": "One burst of action played as a flip-book and looped three times. Uses a sequence, not single shots.",
-      "photos": 24, "beats": [0.12], "zoom": 0, "fit": "crop", "order": "sequence", "loops": 3
+      "photos": 24,
+      "beats": [0.12],
+      "zoom": 0,
+      "fit": "crop",
+      "order": "sequence",
+      "loops": 3
+    },
+    {
+      "id": "recap-30",
+      "name": "30-second recap",
+      "about": "20 photos, 1.5 seconds each with a gentle zoom. A whole event in half a minute.",
+      "photos": 20,
+      "beats": [1.5],
+      "zoom": 0.06,
+      "fit": "crop",
+      "order": "time"
+    },
+    {
+      "id": "speed-ramp",
+      "name": "Speed ramp",
+      "about": "18 photos that start slow and get faster and faster. Good with audio that builds.",
+      "photos": 18,
+      "beats": [1.2, 1.0, 0.8, 0.65, 0.5, 0.4, 0.32, 0.26, 0.22],
+      "zoom": 0.04,
+      "fit": "crop",
+      "order": "time"
+    },
+    {
+      "id": "heartbeat",
+      "name": "Heartbeat",
+      "about": "16 photos in a long-short, long-short rhythm. Works with a steady two-beat track.",
+      "photos": 16,
+      "beats": [0.9, 0.3, 0.9, 0.3, 0.9, 0.3, 0.9, 0.3, 0.9, 0.3, 0.9, 0.3, 0.9, 0.3, 0.9, 0.3],
+      "zoom": 0,
+      "fit": "crop",
+      "order": "time"
+    },
+    {
+      "id": "hero-three",
+      "name": "Three hero shots",
+      "about": "Three photos, 3.5 seconds each with a strong slow zoom, best one last. For a win or an award.",
+      "photos": 3,
+      "beats": [3.5],
+      "zoom": 0.12,
+      "fit": "crop",
+      "order": "best-last"
+    },
+    {
+      "id": "roster-roll",
+      "name": "Roster roll",
+      "about": "12 photos, 0.8 seconds each. Made for portraits or one shot per player.",
+      "photos": 12,
+      "beats": [0.8],
+      "zoom": 0.04,
+      "fit": "crop",
+      "order": "time"
+    },
+    {
+      "id": "day-story",
+      "name": "Story of the day",
+      "about": "10 photos, 3 seconds each, whole photo on a blurred backdrop. Calm pace for a recap with a voice-over.",
+      "photos": 10,
+      "beats": [3.0],
+      "zoom": 0.08,
+      "fit": "blur",
+      "order": "time"
+    }
+  ],
+  "collages": [
+    {
+      "id": "duo",
+      "name": "Two side by side",
+      "about": "Two tall photos next to each other.",
+      "cells": [
+        [0, 0, 0.5, 1],
+        [0.5, 0, 0.5, 1]
+      ]
+    },
+    {
+      "id": "duo-stack",
+      "name": "Two stacked",
+      "about": "One photo above the other.",
+      "cells": [
+        [0, 0, 1, 0.5],
+        [0, 0.5, 1, 0.5]
+      ]
+    },
+    {
+      "id": "strip-3",
+      "name": "Three in a row",
+      "about": "Three tall strips. Good for a serve, set, hit sequence.",
+      "cells": [
+        [0, 0, 0.3333, 1],
+        [0.3333, 0, 0.3333, 1],
+        [0.6667, 0, 0.3333, 1]
+      ]
+    },
+    {
+      "id": "hero-2",
+      "name": "One big, two small",
+      "about": "The first photo large on the left, two stacked on the right.",
+      "cells": [
+        [0, 0, 0.6667, 1],
+        [0.6667, 0, 0.3333, 0.5],
+        [0.6667, 0.5, 0.3333, 0.5]
+      ]
+    },
+    {
+      "id": "hero-3",
+      "name": "One big, three below",
+      "about": "The first photo large across the top, three in a row underneath.",
+      "cells": [
+        [0, 0, 1, 0.6667],
+        [0, 0.6667, 0.3333, 0.3333],
+        [0.3333, 0.6667, 0.3333, 0.3333],
+        [0.6667, 0.6667, 0.3333, 0.3333]
+      ]
+    },
+    {
+      "id": "grid-4",
+      "name": "Grid of four",
+      "about": "Two by two.",
+      "cells": [
+        [0, 0, 0.5, 0.5],
+        [0.5, 0, 0.5, 0.5],
+        [0, 0.5, 0.5, 0.5],
+        [0.5, 0.5, 0.5, 0.5]
+      ]
+    },
+    {
+      "id": "grid-6",
+      "name": "Grid of six",
+      "about": "Two across, three down.",
+      "cells": [
+        [0.0, 0.0, 0.5, 0.3333],
+        [0.5, 0.0, 0.5, 0.3333],
+        [0.0, 0.3333, 0.5, 0.3333],
+        [0.5, 0.3333, 0.5, 0.3333],
+        [0.0, 0.6667, 0.5, 0.3333],
+        [0.5, 0.6667, 0.5, 0.3333]
+      ]
+    },
+    {
+      "id": "grid-9",
+      "name": "Grid of nine",
+      "about": "Three by three. A team wall or a full tournament day.",
+      "cells": [
+        [0.0, 0.0, 0.3333, 0.3333],
+        [0.3333, 0.0, 0.3333, 0.3333],
+        [0.6667, 0.0, 0.3333, 0.3333],
+        [0.0, 0.3333, 0.3333, 0.3333],
+        [0.3333, 0.3333, 0.3333, 0.3333],
+        [0.6667, 0.3333, 0.3333, 0.3333],
+        [0.0, 0.6667, 0.3333, 0.3333],
+        [0.3333, 0.6667, 0.3333, 0.3333],
+        [0.6667, 0.6667, 0.3333, 0.3333]
+      ]
+    },
+    {
+      "id": "center-5",
+      "name": "One in the middle, four around",
+      "about": "The first photo in a wide band across the middle, two above and two below.",
+      "cells": [
+        [0, 0.28, 1, 0.44],
+        [0, 0, 0.5, 0.28],
+        [0.5, 0, 0.5, 0.28],
+        [0, 0.72, 0.5, 0.28],
+        [0.5, 0.72, 0.5, 0.28]
+      ]
+    },
+    {
+      "id": "seamless-4",
+      "name": "Grid of four, no borders",
+      "about": "Two by two with the photos touching.",
+      "gap": 0,
+      "cells": [
+        [0, 0, 0.5, 0.5],
+        [0.5, 0, 0.5, 0.5],
+        [0, 0.5, 0.5, 0.5],
+        [0.5, 0.5, 0.5, 0.5]
+      ]
+    },
+    {
+      "id": "dark-hero-2",
+      "name": "One big, two small, black borders",
+      "about": "The same as One big, two small, on black.",
+      "background": "#000000",
+      "cells": [
+        [0, 0, 0.6667, 1],
+        [0.6667, 0, 0.3333, 0.5],
+        [0.6667, 0.5, 0.3333, 0.5]
+      ]
     }
   ]
 }

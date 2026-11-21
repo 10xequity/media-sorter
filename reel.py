@@ -10,7 +10,7 @@ Reads library photos; writes one new .mp4 into exports/reels/. Originals are nev
 are added: words and audio go on afterwards in Edits or Instagram.
 Templates are in templates.json so they can be refreshed without touching code.
 """
-import argparse, json, re, subprocess, time
+import argparse, json, os, re, subprocess, time
 
 import numpy as np
 from PIL import Image, ImageFilter
@@ -18,7 +18,7 @@ from PIL import Image, ImageFilter
 import sorter as S
 
 W, H, FPS = 1080, 1920, 30
-SHAPES = {"vertical": (1080, 1920), "horizontal": (1920, 1080), "square": (1080, 1080)}
+SHAPES = {"vertical": (1080, 1920), "horizontal": (1920, 1080), "square": (1080, 1080), "portrait": (1080, 1350)}
 FITS = {"fill": "crop", "pan": "crop", "whole": "blur"}  # "": whatever the template says
 
 
@@ -85,6 +85,37 @@ def window(im, cx, cy, w, h):
     """The w x h box centred as near (cx, cy) as the picture's edges allow."""
     l, t = min(max(0, cx - w / 2), im.width - w), min(max(0, cy - h / 2), im.height - h)
     return (l, t, l + w, t + h)
+
+
+def collage(layout, ids, shape="portrait", name=""):
+    """One picture made of several photos, laid out by a collage template. Each photo fills its cell, centred on its
+    action point and wearing its saved look. Written to exports/collages; the photos themselves are not changed."""
+    t = next((x for x in templates().get("collages", []) if x["id"] == layout), None)
+    if not t or shape not in SHAPES:
+        raise ValueError("unknown collage layout or shape")
+    got = {r["id"]: r for r in S.db().execute(
+        f"SELECT id, path FROM media WHERE status='active' AND kind='photo' AND id {S.IN}", (json.dumps(ids),))}
+    rows = [got[i] for i in dict.fromkeys(ids) if i in got]
+    cells = t["cells"]
+    if len(rows) < len(cells):
+        raise ValueError(f"This layout needs {len(cells)} photos and {len(rows)} are chosen. Tick more photos, or pick a smaller layout.")
+    W, H = SHAPES[shape]
+    g = t.get("gap", 12)
+    out = Image.new("RGB", (W, H), t.get("background", "#ffffff"))
+    for (x, y, w, h), row in zip(cells, rows):
+        l, top = round(x * W + (g if x == 0 else g / 2)), round(y * H + (g if y == 0 else g / 2))
+        r, bot = round((x + w) * W - (g if x + w > 0.999 else g / 2)), round((y + h) * H - (g if y + h > 0.999 else g / 2))
+        piece = still(row, "crop", r - l, bot - top)
+        if piece is None:
+            raise ValueError(f"Could not read {os.path.basename(row['path'])}. Is its drive connected?")
+        im, cx, cy = piece
+        out.paste(im.crop(tuple(round(v) for v in window(im, cx, cy, r - l, bot - top))).resize((r - l, bot - top)), (l, top))
+    folder = S.EXPORTS / "collages"
+    folder.mkdir(parents=True, exist_ok=True)
+    name = re.sub(r"[^\w\- ]", "", str(name)).strip()[:50] or t["id"]
+    path = folder / f"{name} {time.strftime('%Y-%m-%d %H%M%S')}.jpg"
+    out.save(path, "JPEG", quality=92)
+    return {"file": path.name, "folder": str(folder), "photos": len(cells), "left_over": len(rows) - len(cells)}
 
 
 def render(t, rows, name="", shape="vertical", move=""):
@@ -162,6 +193,17 @@ def selftest():
         assert S.ffrun(["ffprobe", "-v", "error", "-select_streams", "v", "-show_entries", "stream=width,height,nb_frames",
                         "-of", "csv=p=0", str(p)]).decode().strip() == "1920,1080,90"
         p.unlink()
+        got = collage("hero-2", ids, "portrait", "selftest")
+        f = S.EXPORTS / "collages" / got["file"]
+        assert Image.open(f).size == (1080, 1350) and got["photos"] == 3 and got["left_over"] == 0
+        f.unlink()
+        try:
+            collage("grid-9", ids)
+            raise AssertionError("nine cells from three photos")
+        except ValueError:
+            pass
+    for t in templates()["collages"]:  # every layout tiles the canvas exactly: no holes, no overlaps
+        assert abs(sum(w * h for _, _, w, h in t["cells"]) - 1) < 0.01 and all(x + w <= 1.001 and y + h <= 1.001 for x, y, w, h in t["cells"]), t["id"]
     print("reel selftest passed")
 
 

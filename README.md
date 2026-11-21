@@ -1,6 +1,6 @@
 # Media Sorter
 
-**Version** 0.10.0 (send to someone, Instagram check, cloud photo folders, security and speed fixes) · **Date** 2026-11-21 · **Status** Working; AI tags are a first pass, remote access not yet switched on · **Supersedes** 0.9.0
+**Version** 0.11.0 (tags from Claude Code, favorites, crops, collages, more filters and templates, video skipping) · **Date** 2026-11-21 · **Status** Working; AI tags are a first pass, remote access not yet switched on · **Supersedes** 0.10.0
 
 Scans photo and video folders, scores each file 0–5, finds exact duplicates, keeps
 shots taken together in one group, and gives you a dashboard to search, tag, rate,
@@ -101,6 +101,31 @@ of models into `models/` (from Hugging Face and Google's model storage); after t
 | Video dead time | The viewer lists stretches with no movement or a covered lens; select one to jump there. |
 | Near-duplicates | A resized or re-exported copy is flagged as a duplicate of the largest version. This part needs no AI and runs with every scan. |
 
+## Tags from Claude Code (no extra AI install)
+
+"Claude tags" in the header uses Claude Code, signed in with your own Claude account, instead of a separate AI
+program or a paid key. (Ollama and the keyed services under "AI services" are still there if you want them.)
+
+1. **Lay out a batch.** The app puts small copies (1024 pixels) of the photos into `data/claude/photos`, with a
+   list of each photo's faces and current tags and a page of instructions. It uses the ticked photos, or else the
+   best-scoring photos that have no caption yet.
+2. **Ask Claude.** Open Claude Code in the Media Sorter folder and say "tag my photos". It looks at each picture and
+   writes `data/claude/tags.json`: tags, a category, a one-sentence caption, and things pinned to a face (a jersey
+   number, a printed name) by the face's number or by a point inside it.
+3. **Read them in.** Press "Read in Claude's tags" (Claude can also run `python sorter.py --claude-import`).
+   One Undo reverses the tags and categories; captions and face names stay.
+
+Things to know: the small copies are sent to Anthropic when Claude looks at them. Claude does not work out who a
+person is from their face; the People list (the app's own face grouping) does that, and a name you give a face
+there sticks. `CLAUDE.md` in this folder holds the instructions Claude Code follows, including "check Instagram
+for new posts".
+
+## Favorites
+
+The heart on a tile (or the F key, or "♥ Favorite" in the viewer and the bottom bar) marks a file to use later.
+"♥ Favorites" in the left rail lists them. After you make a video or collage, send or export, the app offers to
+take the mark off the favorites that were just used.
+
 ## Marking photos you have already posted
 
 "Instagram" in the header lists the accounts being checked: how many of each account's post pictures are saved on
@@ -151,6 +176,13 @@ Tick the files, then "Send" (bottom bar or Project panel). Copies are sent; the 
 
 Zips stay in `exports/send/` until you delete them.
 
+## Collages
+
+Tick photos, then "Make a collage": pick one of eleven layouts (two side by side up to a grid of nine) and a
+shape. Photos fill the layout in project order, each around its action point and with its look. The picture is
+saved in `exports/collages`. Layouts live in `templates.json` beside the video templates, so new ones arrive
+with updates.
+
 ## Framing, look and trim (in the viewer)
 
 Open a file. These are saved for that file in the library; the original file is never changed, and Undo does not
@@ -159,9 +191,16 @@ cover them (use "Use the automatic point", "Reset look" or the ✕ beside a piec
 - **Framing for videos (photos):** turn on crop bars for vertical, horizontal or square. The dark bars show what a
   video of that shape leaves out. Click the photo where the action is, or use the Across and Down sliders. Without a
   point of your own, the app centres on the faces it found.
-- **Look (photos):** auto balance (light and contrast only; colours are left alone), a filter (vivid, warm, cool,
-  black and white, faded), and brightness, contrast and color sliders. "Save an edited copy" writes a full-size copy
+- **Crop (photos):** "Crop this photo to" square, portrait 4:5, vertical 9:16 or horizontal 16:9. The suggested
+  crop is the largest piece of that shape around the action point, and the bars show it. Copies you send, export or
+  save are cut that way. In the Send dialog, "Crop" does the same for every photo at once.
+- **Look (photos):** auto balance (light and contrast only; colours are left alone), a filter (vivid, punch, warm,
+  golden hour, cool, teal, rose, forest green, sepia, black and white, noir, faded, matte), and brightness,
+  contrast and color sliders. "Save an edited copy" writes a full-size copy
   into `exports/`. Thumbnails in the grid keep showing the original.
+- **Playback (videos):** speed buttons from half to four times, sound off, and the bar under the video skips
+  to any point. In the grid, resting on a video tile plays the whole video silently, sped up to about 12 seconds;
+  moving across the tile skips through it.
 - **Trim and cut (videos):** play to a spot, "Piece starts here", play on, "Piece ends here". Mark as many pieces as
   you like. "Save trimmed copy" joins them into a new video in `exports/`.
 
@@ -171,7 +210,7 @@ so each photo of a video can be framed before it is made.
 ## Making a video
 
 "Make a video" in the header cuts photos into a video: vertical 1080x1920 (Reels, Stories), horizontal 1920x1080,
-or square 1080x1080.
+square 1080x1080, or portrait 1080x1350 (a 4:5 feed post). Eleven templates set the pace.
 
 - **Framing:** as the template says; fill the frame around the action; slide across to the action (each photo
   starts on its middle and glides to the framing point; cuts shorter than 0.8 seconds just hold on the action); or

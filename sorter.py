@@ -79,9 +79,12 @@ def db():
             CREATE TABLE IF NOT EXISTS scans(id INTEGER PRIMARY KEY, at TEXT, secs REAL, folders TEXT,
               added INTEGER, changed INTEGER, missing INTEGER, errors INTEGER);
             CREATE INDEX IF NOT EXISTS i_face ON faces(media_id);
+            CREATE INDEX IF NOT EXISTS i_cap ON captions(media_id);
             CREATE INDEX IF NOT EXISTS i_status ON media(status, taken);
             CREATE INDEX IF NOT EXISTS i_tag ON tags(tag);
         """)
+        if "crop" not in [r[1] for r in c.execute("PRAGMA table_info(edits)")]:  # libraries made before 0.11
+            c.execute("ALTER TABLE edits ADD COLUMN crop TEXT")
         _local.c, _local.data = c, DATA
     return c
 
@@ -544,7 +547,7 @@ def snapshot(c, ids, label):
     c.execute("INSERT INTO actions(ts,label,payload) VALUES(?,?,?)", (time.time(), label, json.dumps(snap)))
 
 
-def update(ids, fields=None, add=(), remove=(), snap=True):
+def update(ids, fields=None, add=(), remove=(), snap=True, src="you"):
     fields = {k: v for k, v in (fields or {}).items() if k in ("user_score", "category", "event")}
     if fields.get("user_score") is not None and fields.get("user_score") not in range(6):
         fields.pop("user_score", None)
@@ -560,7 +563,7 @@ def update(ids, fields=None, add=(), remove=(), snap=True):
         if fields:
             c.execute(f"UPDATE media SET {','.join(k + '=?' for k in fields)} WHERE id {IN}", (*fields.values(), j))
         for t in add:
-            c.execute("INSERT OR IGNORE INTO tags SELECT value, ?, 'you' FROM json_each(?)", (t, j))
+            c.execute("INSERT OR IGNORE INTO tags SELECT value, ?, ? FROM json_each(?)", (t, src, j))
         for t in remove:
             c.execute(f"DELETE FROM tags WHERE tag=? AND media_id {IN}", (t, j))
         c.commit()
@@ -568,17 +571,127 @@ def update(ids, fields=None, add=(), remove=(), snap=True):
 
 
 def apply_edits(path):
-    """Apply a list of edits written by Claude (or by hand). One Undo reverses the whole batch.
-    Each item: {"id": 12, "add_tags": [], "remove_tags": [], "category": "Action", "score": 4, "event": "..."}"""
-    items = [it for it in json.loads(Path(path).read_text(encoding="utf-8")) if isinstance(it.get("id"), int)]
+    """Apply a list of edits written by Claude (or by hand). One Undo reverses the tags, categories, scores and events.
+    Each item: {"id": 12, "add_tags": [], "remove_tags": [], "category": "Action", "score": 4, "event": "...",
+                "caption": "one sentence", "people": [{"face": 31, "name": "sam"}, {"x": 0.4, "y": 0.3, "name": "jersey 12"}]}
+    A person is pinned to a face by its number (from the batch list) or by a point inside it, as fractions of the picture."""
+    data = json.loads(Path(path).read_text(encoding="utf-8-sig"))
+    items = [it for it in (data if isinstance(data, list) else []) if isinstance(it, dict) and isinstance(it.get("id"), int)]
     c = db()
     with WLOCK:
+        known = {r[0] for r in c.execute(f"SELECT id FROM media WHERE id {IN}", (json.dumps([it["id"] for it in items]),))}
+        items = [it for it in items if it["id"] in known]
         snapshot(c, [it["id"] for it in items], "import from Claude")
         c.commit()
         for it in items:
             fields = {k: it[src] for k, src in (("category", "category"), ("user_score", "score"), ("event", "event")) if src in it}
-            update([it["id"]], fields, it.get("add_tags", ()), it.get("remove_tags", ()), snap=False)
+            if fields.get("category") not in (None, *CFG["categories"]):
+                fields.pop("category")  # only the categories the app already has
+            update([it["id"]], fields, it.get("add_tags") or (), it.get("remove_tags") or (), snap=False, src="claude")
+            if it.get("caption"):
+                c.execute("INSERT OR REPLACE INTO captions VALUES(?,?,'claude')", (it["id"], str(it["caption"]).strip()[:500]))
+            for p in (it.get("people") or [])[:40]:
+                name = str((p or {}).get("name") or "").strip().lower()[:40] if isinstance(p, dict) else ""
+                if not name:
+                    continue
+                faces = c.execute("SELECT id, x, y, w, h FROM faces WHERE media_id=?", (it["id"],)).fetchall()
+                hit = [f for f in faces if f["id"] == p.get("face")]
+                if not hit and isinstance(p.get("x"), (int, float)) and isinstance(p.get("y"), (int, float)):
+                    hit = [f for f in faces if f["x"] <= p["x"] <= f["x"] + f["w"] and f["y"] <= p["y"] <= f["y"] + f["h"]][:1]
+                if hit:  # the face keeps this name through later AI passes, and similar faces are grouped under it
+                    c.execute("UPDATE faces SET person=? WHERE id=?", (name, hit[0]["id"]))
+                    c.execute("INSERT OR IGNORE INTO tags VALUES(?,?,'face')", (it["id"], name))
+                else:    # no face was found there: keep the name as an ordinary tag
+                    c.execute("INSERT OR IGNORE INTO tags VALUES(?,?,'claude')", (it["id"], name))
+        c.commit()
     return len(items)
+
+
+# ---------- tagging by Claude Code: the app lays out a batch, Claude writes tags.json, the app reads it in ----------
+
+def claude_state():
+    d, c = DATA / "claude", db()
+    todo = json.loads((d / "todo.json").read_text(encoding="utf-8")) if (d / "todo.json").exists() else []
+    return {"waiting": len(todo), "ready": (d / "tags.json").exists(), "folder": str(d),
+            "left": c.execute("SELECT count(*) FROM media WHERE status='active' AND kind='photo' AND err IS NULL "
+                              "AND id NOT IN (SELECT media_id FROM captions)").fetchone()[0]}
+
+
+def claude_batch(ids=(), n=40):
+    """Lay out photos for Claude Code to look at: small copies, a list with each photo's faces, and instructions.
+    With no ids, the next photos that have no caption yet (best first). Replaces the previous batch."""
+    c, d = db(), DATA / "claude"
+    n = min(max(1, int(n)), 200)
+    if ids:
+        got = {r["id"]: r for r in c.execute(f"SELECT {LIST_COLS}, tkey FROM media WHERE status='active' AND kind='photo' "
+                                             f"AND err IS NULL AND id {IN}", (json.dumps(list(ids)),))}
+        rows = [got[i] for i in dict.fromkeys(ids) if i in got][:n]
+    else:
+        rows = c.execute(f"SELECT {LIST_COLS}, tkey FROM media WHERE status='active' AND kind='photo' AND err IS NULL AND dup_of IS NULL "
+                         f"AND id NOT IN (SELECT media_id FROM captions) ORDER BY {ES} DESC, taken DESC LIMIT ?", (n,)).fetchall()
+    if not rows:
+        raise ValueError("No photos to tag: every photo already has a caption, or none were chosen.")
+    (d / "photos").mkdir(parents=True, exist_ok=True)
+    for old in (d / "photos").glob("*.jpg"):  # the last batch's small copies (made by the app, not your photos)
+        old.unlink()
+    (d / "tags.json").unlink(missing_ok=True)
+    todo = []
+    for r in rows:
+        src = screen(r) or DATA / "thumbs" / (r["tkey"] + ".jpg")
+        try:
+            im = Image.open(src).convert("RGB")
+        except Exception:
+            continue
+        im.thumbnail((1024, 1024))  # big enough to read a jersey number, small enough to look at quickly
+        im.save(d / "photos" / f"{r['id']}.jpg", "JPEG", quality=82)
+        todo.append({"id": r["id"], "file": f"photos/{r['id']}.jpg", "name": os.path.basename(r["path"]), "event": r["event"],
+                     "category": r["category"], "tags_now": [t for t in (r["tags"] or "").split("|") if t],
+                     "faces": [{"face": f["id"], "x": round(f["x"], 3), "y": round(f["y"], 3), "w": round(f["w"], 3),
+                                "h": round(f["h"], 3), "person": f["person"]}
+                               for f in c.execute("SELECT id,x,y,w,h,person FROM faces WHERE media_id=?", (r["id"],))]})
+    (d / "todo.json").write_text(json.dumps(todo, indent=1), encoding="utf-8")
+    vocab = ", ".join(t[0] for t in CFG["ai"]["tags"] + CFG["ai"]["places"])
+    (d / "README.md").write_text(f"""# Tagging batch for Claude Code
+
+{len(todo)} photos are waiting in `photos/`. `todo.json` lists each one: its library id, file, event, the tags it
+already has, and the faces the app found (`face` number, and `x y w h` as fractions of the picture from the top left).
+
+## What to do
+
+1. Read `todo.json`. Look at each picture in `photos/` (open the files in groups, not all at once).
+2. Write `tags.json` in this folder: one list, one entry per photo.
+
+       [{{"id": 12, "add_tags": ["hitting", "jersey 12", "shoes"], "category": "Action",
+         "caption": "A hitter in a black jersey swings at the net while two blockers jump.",
+         "people": [{{"face": 31, "name": "jersey 12"}}]}}]
+
+3. Run `python sorter.py --claude-import` from the Media Sorter folder (or press "Read in Claude's tags" in the app).
+
+## Rules
+
+- `id` must be the number from `todo.json`. Every key except `id` is optional.
+- `add_tags`: short, lower-case, what is plainly visible. Prefer these words when they fit: {vocab}.
+  Add others freely: team photo, action shot, party, friends, pose, individual, pair, group, shoes, feet, trophy,
+  net, sand, a jersey number as "jersey 12", a jersey colour as "black jersey". Do not repeat tags in `tags_now`.
+- `category`: one of {", ".join(CFG["categories"])}. Leave it out if the current one is right.
+- `caption`: one plain sentence saying what is happening. It becomes searchable.
+- `people`: pin something to one face using its `face` number from `todo.json`, or a point inside the face as
+  `"x"` and `"y"` fractions. **Do not work out who a person is from their face.** Use only what the picture
+  itself shows (a jersey number, a name printed on a shirt or sign) or a name the owner gave you for that face.
+  Faces that already have a `person` name need nothing.
+- Do not edit anything outside this folder. The app reads `tags.json`; one Undo in the app reverses the tags.
+""", encoding="utf-8")
+    return claude_state()
+
+
+def claude_import():
+    f = DATA / "claude" / "tags.json"
+    if not f.exists():
+        raise ValueError("Claude has not written tags.json yet. Open Claude Code in the Media Sorter folder and say: tag my photos.")
+    n = apply_edits(f)
+    f.replace(f.with_name(time.strftime("tags read in %Y-%m-%d %H%M%S.json")))  # kept as a record; a new batch starts clean
+    (DATA / "claude" / "todo.json").unlink(missing_ok=True)
+    return n
 
 
 # ---------- event names from a calendar (data/events.csv: date,name) ----------
@@ -673,13 +786,36 @@ def apply_events(choices):
 # ---------- your edits to one file: framing point, look, kept video pieces ----------
 # Kept in the library database. The original file is never changed; videos and exported copies are made with them.
 
-FILTERS = {"": "None", "vivid": "Vivid", "warm": "Warm", "cool": "Cool", "bw": "Black and white", "faded": "Faded"}
+FILTERS = {"": "None", "vivid": "Vivid", "punch": "Punch (strong contrast)", "warm": "Warm", "golden": "Golden hour",
+           "cool": "Cool", "teal": "Teal", "rose": "Rose", "forest": "Forest green", "sepia": "Sepia", "bw": "Black and white",
+           "noir": "Noir (hard black and white)", "faded": "Faded", "matte": "Matte"}
+# filter: (contrast, colour strength, red, green, blue, lifted blacks)
+TINT = {"vivid": (1.1, 1.35, 1, 1, 1, 0), "punch": (1.25, 1.15, 1, 1, 1, 0), "warm": (1, 1, 1.08, 1, 0.92, 0),
+        "golden": (1.05, 1.15, 1.12, 1.03, 0.84, 0), "cool": (1, 1, 0.93, 1, 1.07, 0), "teal": (1.06, 1.1, 0.9, 1.04, 1.08, 0),
+        "rose": (1, 1.05, 1.09, 0.96, 1.03, 0), "forest": (1.05, 1.1, 0.95, 1.07, 0.92, 0), "sepia": (1.05, 0, 1.1, 0.98, 0.8, 8),
+        "bw": (1, 0, 1, 1, 1, 0), "noir": (1.35, 0, 1, 1, 1, 0), "faded": (0.85, 0.8, 1, 1, 1, 28), "matte": (0.9, 0.9, 1, 1, 1, 20)}
 
 
 def edit(mid):
-    r = db().execute("SELECT fx, fy, look, keep FROM edits WHERE media_id=?", (mid,)).fetchone()
-    return {"point": [r["fx"], r["fy"]] if r and r["fx"] is not None else None,
+    r = db().execute("SELECT fx, fy, look, keep, crop FROM edits WHERE media_id=?", (mid,)).fetchone()
+    return {"point": [r["fx"], r["fy"]] if r and r["fx"] is not None else None, "crop": (r["crop"] or "") if r else "",
             "look": json.loads(r["look"] or "{}") if r else {}, "keep": json.loads(r["keep"] or "[]") if r else []}
+
+
+CROPS = {"": "Not cropped", "square": "Square 1:1", "portrait": "Portrait 4:5 (Instagram post)",
+         "vertical": "Vertical 9:16 (Story, Reel cover)", "horizontal": "Horizontal 16:9"}
+ASPECT = {"square": 1, "portrait": 4 / 5, "vertical": 9 / 16, "horizontal": 16 / 9}
+
+
+def crop(im, mid, shape):
+    """The picture cut to a shape, keeping as much as fits and centred on its action point: the recommended crop."""
+    a = ASPECT.get(shape)
+    if not a:
+        return im
+    w, h = min(im.width, round(im.height * a)), min(im.height, round(im.width / a))
+    fx, fy = focus(mid)
+    l, t = min(max(0, round(fx * im.width - w / 2)), im.width - w), min(max(0, round(fy * im.height - h / 2)), im.height - h)
+    return im.crop((l, t, l + w, t + h))
 
 
 def clean_look(d):
@@ -703,11 +839,13 @@ def set_edit(ids, b):
                 e["point"] = [min(1.0, max(0.0, float(v))) for v in b["point"][:2]] if b["point"] else None
             if "look" in b:
                 e["look"] = clean_look(b["look"])
+            if "crop" in b:
+                e["crop"] = b["crop"] if b["crop"] in ASPECT else ""
             if "keep" in b:
                 e["keep"] = sorted([round(float(a), 2), round(float(z), 2)] for a, z in (b["keep"] or [])[:50]
                                    if float(a) >= 0 and float(z) - float(a) >= 0.2)
-            c.execute("INSERT OR REPLACE INTO edits VALUES(?,?,?,?,?)", (i, *(e["point"] or (None, None)),
-                      json.dumps(e["look"]) if e["look"] else None, json.dumps(e["keep"]) if e["keep"] else None))
+            c.execute("INSERT OR REPLACE INTO edits VALUES(?,?,?,?,?,?)", (i, *(e["point"] or (None, None)),
+                      json.dumps(e["look"]) if e["look"] else None, json.dumps(e["keep"]) if e["keep"] else None, e["crop"] or None))
         c.commit()
     return edit(ids[0]) if ids else {}
 
@@ -732,21 +870,14 @@ def look(im, e):
             mid = min(0.95, max(0.05, (float(np.median(g)) - lo) / (hi - lo)))
             gamma = min(1.25, max(0.8, math.log(0.45) / math.log(mid)))
             im = im.point([round(255 * min(1.0, max(0.0, (v - lo) / (hi - lo))) ** gamma) for v in range(256)] * 3)
-    f, b, c, s = e.get("filter"), e.get("bright", 1), e.get("contrast", 1), e.get("color", 1)
-    if f == "vivid":
-        c, s = c * 1.1, s * 1.35
-    if f == "faded":
-        c, s = c * 0.85, s * 0.8
-    if f == "bw":
-        s = 0
+    k = TINT.get(e.get("filter"), (1, 1, 1, 1, 1, 0))
+    b, c, s = e.get("bright", 1), e.get("contrast", 1) * k[0], e.get("color", 1) * k[1]
     for tool, v in ((ImageEnhance.Brightness, b), (ImageEnhance.Contrast, c), (ImageEnhance.Color, s)):
         if v != 1:
             im = tool(im).enhance(v)
-    if f in ("warm", "cool", "faded"):
-        red, blue = (1.08, 0.92) if f == "warm" else (0.93, 1.07) if f == "cool" else (1, 1)
-        lift = 28 if f == "faded" else 0
-        lut = lambda k: [min(255, round(lift + v * k * (255 - lift) / 255)) for v in range(256)]
-        im = im.point(lut(red) + lut(1) + lut(blue))
+    if k[2:] != (1, 1, 1, 0):  # tint: each colour scaled, blacks lifted for the washed-out looks
+        lut = lambda g: [min(255, round(k[5] + v * g * (255 - k[5]) / 255)) for v in range(256)]
+        im = im.point(lut(k[2]) + lut(k[3]) + lut(k[4]))
     return im
 
 
@@ -781,9 +912,9 @@ def export(ids, name="", trim=False):
                 edges = [0.0, *(t for seg in dead for t in seg), r["dur"]]
                 keep = [(a, b) for a, b in zip(edges[::2], edges[1::2]) if b - a > 0.5]
             trimmed = bool(keep) and cut(r["path"], keep, out.with_suffix(".mp4"))
-        elif e["look"]:
+        elif e["look"] or e["crop"]:
             try:
-                look(ImageOps.exif_transpose(Image.open(r["path"])).convert("RGB"), e["look"]).save(
+                crop(look(ImageOps.exif_transpose(Image.open(r["path"])).convert("RGB"), e["look"]), r["id"], e["crop"]).save(
                     out.with_suffix(".jpg"), "JPEG", quality=95, subsampling=0)
                 edited = True
             except Exception:
@@ -818,25 +949,27 @@ One Undo in the dashboard reverses the whole import.
             "edited": sum(m["edited"] for m in manifest)}
 
 
-def sendable(r, small):
-    """One file ready to send: (file name, bytes or path). Photos carry their look; "small" is the 2000-pixel
-    screen copy, which emails and texts quickly. Videos go as they are. The original is never changed."""
+def sendable(r, small, shape=""):
+    """One file ready to send: (file name, bytes or path). Photos carry their look and crop; "small" is the 2000-pixel
+    screen copy, which emails and texts quickly. `shape` crops photos that have no crop of their own.
+    Videos go as they are. The original is never changed."""
     name, e = os.path.basename(r["path"]), edit(r["id"])
-    if r["kind"] == "photo" and (small or e["look"]):
+    shape = e["crop"] or (shape if shape in ASPECT else "")
+    if r["kind"] == "photo" and (small or e["look"] or shape):
         try:
             src = screen(r) if small else None
-            if src and not e["look"]:
+            if src and not e["look"] and not shape:
                 return Path(name).stem + ".jpg", src
             im = Image.open(src) if src else ImageOps.exif_transpose(Image.open(r["path"])).convert("RGB")
             buf = io.BytesIO()
-            look(im, e["look"]).save(buf, "JPEG", quality=88 if small else 95)
+            crop(look(im, e["look"]), r["id"], shape).save(buf, "JPEG", quality=88 if small else 95)
             return Path(name).stem + ".jpg", buf.getvalue()
         except Exception:
             pass  # cannot be read as a picture right now: send the file as it is
     return name, Path(r["path"])
 
 
-def bundle(ids, small=True):
+def bundle(ids, small=True, shape=""):
     """Put the chosen files into one zip in exports/send, in the order given, ready to attach or hand over."""
     got = {r["id"]: r for r in db().execute(
         f"SELECT id,path,tkey,kind FROM media WHERE status='active' AND id {IN}", (json.dumps(ids),))}
@@ -848,7 +981,7 @@ def bundle(ids, small=True):
     n = 0
     with zipfile.ZipFile(out, "w", zipfile.ZIP_STORED) as z:  # photos and videos are already compressed
         for r in rows:
-            name, src = sendable(r, small)
+            name, src = sendable(r, small, shape)
             try:
                 if isinstance(src, bytes):
                     z.writestr(f"{n + 1:03d}_{name}", src)
@@ -1041,7 +1174,8 @@ def stats():
                         "GROUP BY 1 ORDER BY max(taken) DESC LIMIT 300"),
         "tags": top(lambda t, s: True, 40),
         "people": top(lambda t, s: s == "face" and t != "eyes closed", 80),
-        "ai_tags": top(lambda t, s: s in ("ai", "video")),
+        "ai_tags": top(lambda t, s: s in ("ai", "video", "claude"), 150),
+        "favorites": sum(k for t, s, k in tg if t == "favorite"),
         "posted": top(lambda t, s: s == "posted", by_name=True),
         "eyes": sum(k for t, s, k in tg if t == "eyes closed"),
         "ai_todo": one(f"SELECT count(*) {act} AND err IS NULL AND (id NOT IN (SELECT media_id FROM ai) "
@@ -1067,7 +1201,7 @@ def item(mid):
     d["faces"] = [dict(x) for x in c.execute("SELECT person, blink FROM faces WHERE media_id=?", (mid,))]
     dead = c.execute("SELECT dead FROM ai WHERE media_id=?", (mid,)).fetchone()
     d["dead"] = json.loads(dead[0]) if dead and dead[0] else None
-    d["edit"], d["focus"], d["filters"] = edit(mid), list(focus(mid)), FILTERS
+    d["edit"], d["focus"], d["filters"], d["crops"] = edit(mid), list(focus(mid)), FILTERS, CROPS
     cap = c.execute("SELECT text FROM captions WHERE media_id=?", (mid,)).fetchone()
     d["caption"] = cap[0] if cap else ""
     said = c.execute("SELECT segs FROM transcripts WHERE media_id=?", (mid,)).fetchone()
@@ -1124,15 +1258,17 @@ def playable(row):
 
 
 def preview(row):
-    """A small silent 6-second clip for hover autoplay; made once, then cached."""
-    out = DATA / "previews" / (row["tkey"] + ".mp4")
+    """A small silent copy of the WHOLE video, sped up to about 12 seconds, for hover play and for skipping through
+    it on its tile. Made once, then cached. A keyframe every 5 frames makes jumping about instant."""
+    out = DATA / "previews" / (row["tkey"] + ".all.mp4")
     if not out.exists():
         tmp = out.with_suffix(".tmp.mp4")
-        start = "%.2f" % ((row["dur"] or 0) * 0.3)
-        subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", start, "-t", "6", "-i", row["path"], "-an",
-                        "-vf", "scale=-2:360", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "30",
-                        "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(tmp)],
-                       capture_output=True, timeout=120, creationflags=NOWIN)
+        speed = max(1.0, (row["dur"] or 0) / 12)
+        # ponytail: reads the whole video once; an hour-long file takes a few minutes the first time it is hovered
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", row["path"], "-an",
+                        "-vf", f"setpts=PTS/{speed:.3f},fps=15,scale=-2:360", "-c:v", "libx264", "-preset", "ultrafast",
+                        "-crf", "30", "-g", "5", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(tmp)],
+                       capture_output=True, timeout=1800, creationflags=NOWIN)
         if tmp.exists() and tmp.stat().st_size:
             tmp.replace(out)
     return out if out.exists() else None
@@ -1250,6 +1386,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(llm.status())
             if u.path == "/api/instagram":
                 return self.send_json(insta())
+            if u.path == "/api/claude":
+                return self.send_json(claude_state())
+            if len(parts) == 2 and parts[0] == "collage":  # a finished collage, by file name only (no folders)
+                f = EXPORTS / "collages" / os.path.basename(unquote(parts[1]).replace("\\", "/"))
+                if f.suffix == ".jpg" and f.is_file():
+                    return self.send_file(f, "image/jpeg", cache=False)
             if len(parts) == 2 and parts[0] == "sent":  # a zip made by Send, by file name only (no folders)
                 f = EXPORTS / "send" / os.path.basename(unquote(parts[1]).replace("\\", "/"))
                 if f.suffix == ".zip" and f.is_file():
@@ -1257,7 +1399,7 @@ class Handler(BaseHTTPRequestHandler):
             if len(parts) == 2 and parts[0] == "send" and parts[1].isdigit():  # one file, ready to share
                 r = db().execute("SELECT id,path,tkey,kind FROM media WHERE status='active' AND id=?", (int(parts[1]),)).fetchone()
                 if r:
-                    name, src = sendable(r, p.get("size") != "full")
+                    name, src = sendable(r, p.get("size") != "full", p.get("crop", ""))
                     ctype = mimetypes.guess_type(name)[0] or "application/octet-stream"
                     return self.send_bytes(src, ctype, name=name) if isinstance(src, bytes) \
                         else self.send_file(src, ctype, cache=False, name=name)
@@ -1325,7 +1467,17 @@ class Handler(BaseHTTPRequestHandler):
                 if self.at_desk():
                     show(out["folder"])  # show the folder, but only to someone sitting at this computer
             elif path == "/api/send":
-                out = bundle(ids, b.get("size") != "full")
+                out = bundle(ids, b.get("size") != "full", str(b.get("crop") or ""))
+                if self.at_desk():
+                    show(out["folder"])
+            elif path == "/api/claude":
+                if b.get("read"):
+                    out = {"changed": claude_import(), **claude_state()}
+                else:
+                    out = claude_batch(ids, b.get("n") or 40)
+            elif path == "/api/collage":
+                import reel
+                out = reel.collage(str(b.get("layout", "")), ids, str(b.get("shape") or "portrait"), b.get("name", ""))
                 if self.at_desk():
                     show(out["folder"])
             elif path == "/api/instagram":
@@ -1495,6 +1647,24 @@ def selftest():
             raise AssertionError(bad)
         except ValueError:
             pass
+    assert crop(sharp, sid, "square").size == (1080, 1080) and crop(sharp, sid, "portrait").size == (864, 1080)
+    assert crop(sharp, sid, "vertical").size == (608, 1080) and crop(sharp, sid, "") is sharp
+    assert set_edit([sid], {"crop": "portrait"})["crop"] == "portrait" and set_edit([sid], {"crop": "evil"})["crop"] == ""
+    assert all(look(sharp, {"filter": f}).size == sharp.size for f in FILTERS) and set(TINT) == set(FILTERS) - {""}
+    assert claude_batch([sid])["waiting"] == 1 and (DATA / "claude" / "photos" / f"{sid}.jpg").exists()
+    c.execute("INSERT INTO faces(media_id, x, y, w, h) VALUES(?, 0.4, 0.2, 0.1, 0.1)", (sid,))
+    (DATA / "claude" / "tags.json").write_text(json.dumps([
+        {"id": sid, "add_tags": ["Jersey 12"], "category": "Nonsense", "caption": "A test card.",
+         "people": [{"x": 0.45, "y": 0.25, "name": "Sam"}, {"x": 0.9, "y": 0.9, "name": "nobody there"}]},
+        {"id": 10 ** 9, "add_tags": ["x"]}, "junk"]), encoding="utf-8")
+    assert claude_import() == 1 and not claude_state()["ready"]
+    assert c.execute("SELECT person FROM faces WHERE media_id=?", (sid,)).fetchone()[0] == "sam"
+    assert {(t, s) for t, s in c.execute("SELECT tag, src FROM tags WHERE media_id=? AND src IN ('claude','face')", (sid,))} == \
+        {("jersey 12", "claude"), ("sam", "face"), ("nobody there", "claude")}
+    assert item(sid)["caption"] == "A test card." and item(sid)["category"] != "Nonsense"
+    update([sid], add=["favorite"])
+    assert stats()["favorites"] == 1 and listing({"tag": "favorite"})["total"] == 1
+    update([sid], remove=["favorite"])
     scan()  # a second scan must not redo or duplicate anything
     assert c.execute("SELECT count(*) FROM media").fetchone()[0] == 4 and scan_state["total"] == 0
     c.close()
@@ -1509,11 +1679,18 @@ if __name__ == "__main__":
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--rescore", action="store_true")
     ap.add_argument("--apply", metavar="FILE")
+    ap.add_argument("--claude-batch", metavar="N", type=int, help="lay out the next N untagged photos for Claude Code")
+    ap.add_argument("--claude-import", action="store_true", help="read in data/claude/tags.json")
     ap.add_argument("--open", action="store_true", help="open the dashboard in the browser")
     ap.add_argument("--retry", action="store_true", help="wait for the port (used when restarting after an update)")
     args = ap.parse_args()
     if args.selftest:
         selftest()
+    elif args.claude_batch:
+        s = claude_batch((), args.claude_batch)
+        print(f"{s['waiting']} photos laid out in {s['folder']}. Read README.md there next.")
+    elif args.claude_import:
+        print("read in tags for", claude_import(), "photos; Undo in the dashboard reverses the tags")
     elif args.apply:
         print("applied edits to", apply_edits(args.apply), "files; Undo in the dashboard reverses them")
     elif args.rescore:

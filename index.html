@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#17222c">
 <title>Media Sorter</title>
 <style>
 :root {
@@ -12,11 +13,12 @@
   --body: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
 }
 * { box-sizing: border-box; }
+:root { color-scheme: dark; }
 html, body { height: 100%; }
 body { margin: 0; background: var(--floor); color: var(--chalk); font: 14px/1.45 var(--body);
   display: grid; grid-template-columns: auto 1fr auto; }
 button, input, select { font: inherit; color: inherit; }
-button { cursor: pointer; background: var(--raised); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; }
+button { cursor: pointer; background: var(--raised); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; touch-action: manipulation; }
 button:hover { border-color: var(--mute); }
 button.primary { background: var(--ball); color: #1b1600; border-color: var(--ball); font-weight: 600; }
 button.danger { color: var(--bad); border-color: #6b3a35; }
@@ -42,7 +44,8 @@ main { min-width: 0; padding: 0 22px 110px; }
 header { position: sticky; top: 0; z-index: 5; background: var(--floor); padding: 14px 0 10px; display: grid; gap: 10px; }
 header .hrow { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 header input[type=search] { flex: 1; min-width: 220px; padding: 9px 14px; font-size: 15px; }
-header .grp { display: inline-flex; gap: 6px; align-items: center; padding-right: 12px; border-right: 1px solid var(--line); }
+header .grp { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; padding-right: 12px; border-right: 1px solid var(--line); min-width: 0; }
+header button { white-space: nowrap; }
 header .grp b { font: 600 12px var(--body); color: var(--mute); margin-right: 2px; }
 progress { width: 140px; height: 8px; accent-color: var(--ball); }
 #busy { position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 30; overflow: hidden; }
@@ -64,7 +67,7 @@ progress { width: 140px; height: 8px; accent-color: var(--ball); }
 .legend span + span::before { background: var(--ball); }
 #dist { display: flex; gap: 6px; align-items: end; height: 74px; }
 #dist button { flex: 1; padding: 0; border: 0; background: none; display: flex; flex-direction: column; justify-content: end; height: 100%; gap: 3px; color: var(--mute); }
-#dist .bar { background: var(--raised); border-radius: 3px 3px 0 0; min-height: 2px; transition: height .5s cubic-bezier(.2,.8,.2,1); }
+#dist .bar { background: var(--raised); border-radius: 3px 3px 0 0; min-height: 2px; }
 #dist button:hover .bar, #dist button[aria-pressed="true"] .bar { background: var(--ball); }
 #dist button.low .bar { background: #7a4039; }
 
@@ -94,10 +97,32 @@ progress { width: 140px; height: 8px; accent-color: var(--ball); }
 .badge { background: rgba(10,16,22,.8); border-radius: 4px; padding: 1px 6px; font-size: 11px; }
 .badge.warn { background: var(--bad); color: #2a0b06; font-weight: 600; }
 .badge.used { background: var(--net); color: #06203a; font-weight: 600; }
-.pick { position: absolute; top: 6px; left: 6px; width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--chalk);
+.pick { position: absolute; top: 5px; left: 5px; width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--chalk);
   background: rgba(10,16,22,.5); opacity: 0; padding: 0; }
 .tile:hover .pick, .tile.sel .pick, .pick:focus-visible { opacity: 1; }
 .tile.sel .pick { background: var(--ball); border-color: var(--ball); }
+.fav { position: absolute; top: 4px; left: 34px; width: 26px; height: 26px; display: grid; place-items: center; font-size: 17px; line-height: 1;
+  color: var(--chalk); text-shadow: 0 0 3px #000; opacity: 0; cursor: pointer; border-radius: 50%; }
+.tile:hover .fav, .fav:focus-visible { opacity: .85; }
+.fav.on { opacity: 1; color: #ff5d73; }
+.chip[aria-pressed="true"] { background: var(--ball); border-color: var(--ball); color: #1b1600; }
+.tile .scrub { position: absolute; left: 0; bottom: 0; height: 4px; background: var(--ball); pointer-events: none; z-index: 2; }
+#collbox, #claudebox { width: min(640px, 94vw); height: fit-content; max-height: 92vh; overflow-y: auto; padding: 22px; border: 1px solid var(--line);
+  border-radius: 12px; background: var(--panel); }
+#collbox[open], #claudebox[open] { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+#collbox::backdrop, #claudebox::backdrop { background: rgba(5, 9, 13, .7); }
+#collbox label.line, #claudebox label.line { display: grid; gap: 4px; color: var(--mute); }
+#colllay { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px; }
+#colllay label { display: grid; grid-template-columns: 40px 1fr; gap: 2px 10px; align-items: center; padding: 8px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
+#colllay label:has(input:checked) { border-color: var(--ball); background: var(--raised); }
+#colllay label.short { opacity: .5; }
+#colllay input { position: absolute; opacity: 0; }
+#colllay label:has(input:focus-visible) { outline: 2px solid var(--ball); }
+#colllay .mini { position: relative; width: 40px; height: 50px; background: var(--chalk); grid-row: span 2; }
+#colllay .mini i { position: absolute; background: var(--mute); border: 1px solid var(--chalk); box-sizing: border-box; }
+#colllay small { color: var(--mute); }
+#collout img { max-width: 100%; max-height: 46vh; display: block; border-radius: 6px; }
+#claudebox ol { margin: 0; padding-left: 20px; display: grid; gap: 12px; }
 #empty { padding: 60px 0; color: var(--mute); max-width: 52ch; }
 #more { height: 40px; }
 
@@ -256,7 +281,12 @@ kbd { background: var(--raised); border-radius: 3px; padding: 0 5px; font: 12px 
   #project.shut { width: auto; } #project.shut .phead { flex-direction: row; } #project.shut .phead h2 { writing-mode: horizontal-tb; }
   #board { grid-template-columns: 1fr; }
   #viewer[open] { grid-template-columns: 1fr; grid-template-rows: 55vh 1fr; }
+  input, select { font-size: 16px; }
+  button, select { min-height: 44px; }
+  .pick, .fav { opacity: 1; }
+  .fav:not(.on) { opacity: .7; }
 }
+@media (hover: none) { .pick { opacity: 1; } .fav:not(.on) { opacity: .7; } }  /* touch screens have no hover to reveal them */
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 </style>
 </head>
@@ -280,13 +310,15 @@ kbd { background: var(--raised); border-radius: 3px; padding: 0 5px; font: 12px 
       <span class="grp"><b>Library</b>
         <button id="scan" title="Read new and changed files in the chosen folders">Scan for new files</button>
         <button id="pick" title="Choose which folders and drives are scanned">Folders</button>
+        <button id="claude" title="Have Claude Code look at photos on this computer and write tags and captions">Claude tags</button>
         <button id="insta" title="Mark the photos that are already on your Instagram accounts">Instagram</button>
         <button id="evnames" title="Name each day of photos after the event on your calendar">Event names</button>
         <button id="llmset" title="Optional: connect a large AI model that writes captions and extra tags">AI services</button>
         <button id="airun" title="Tags, people, closed eyes and video dead time. Runs on this computer only.">Run AI</button></span>
       <span class="grp"><b>Create</b>
         <button id="rand" title="Pick photos at random from what is on screen">Random pick</button>
-        <button id="mkreel" title="Cut photos into a video: vertical for Reels, horizontal or square">Make a video</button></span>
+        <button id="mkreel" title="Cut photos into a video: vertical for Reels, horizontal or square">Make a video</button>
+        <button id="mkcoll" title="Lay the ticked photos out as one picture">Make a collage</button></span>
       <span class="grp"><button id="undo" title="Undo the last change (Ctrl+Z)">Undo</button></span>
       <span class="gap"></span>
       <span id="scanmsg" role="status"></span><progress id="prog" hidden aria-label="Progress"></progress>
@@ -311,6 +343,7 @@ kbd { background: var(--raised); border-radius: 3px; padding: 0 5px; font: 12px 
 <div id="bar" role="toolbar" aria-label="Actions for selected files">
   <strong id="nsel">0</strong>
   <button id="all">Select all</button><button id="none">Clear</button>
+  <button id="bfav" title="Mark the selected files as favorites, to find and use later">♥ Favorite</button>
   <span class="rate" id="brate" aria-label="Rate selected"></span>
   <select id="bcat" aria-label="Set category"></select>
   <input id="btag" placeholder="Add tag, Enter" aria-label="Add a tag to selected">
@@ -342,7 +375,8 @@ kbd { background: var(--raised); border-radius: 3px; padding: 0 5px; font: 12px 
   <fieldset><legend>Template</legend><div id="reeltpl" style="display:grid;gap:6px"></div></fieldset>
   <div class="row">
     <label class="line">Shape<select id="reelshape"><option value="vertical">Vertical 9:16 (Reels, Stories)</option>
-      <option value="horizontal">Horizontal 16:9 (YouTube, TV)</option><option value="square">Square 1:1</option></select></label>
+      <option value="horizontal">Horizontal 16:9 (YouTube, TV)</option><option value="square">Square 1:1</option>
+      <option value="portrait">Portrait 4:5 (feed post)</option></select></label>
     <label class="line">Framing<select id="reelmove"><option value="">As the template says</option>
       <option value="fill">Fill the frame around the action</option><option value="pan">Slide across to the action</option>
       <option value="whole">Whole photo on a blurred backdrop</option></select></label>
@@ -386,11 +420,44 @@ kbd { background: var(--raised); border-radius: 3px; padding: 0 5px; font: 12px 
   <label class="line">Size<select id="sendsize">
     <option value="email">Email size: smaller copies that send quickly (photos about 2000 pixels wide)</option>
     <option value="full">Full size: original quality, much larger</option></select></label>
+  <label class="line">Crop<select id="sendcrop">
+    <option value="">As they are</option><option value="portrait">Portrait 4:5 (Instagram post)</option><option value="square">Square 1:1</option>
+    <option value="vertical">Vertical 9:16 (Story)</option><option value="horizontal">Horizontal 16:9</option></select></label>
+  <div class="path" id="sendcropnote" hidden>Each photo is cut around its own action point: the faces in it, or the spot you set in the viewer. Photos you gave a crop of their own keep that one.</div>
   <div class="row"><button class="primary" id="sendshare" title="Opens this device's share menu: Mail, Messages, AirDrop, Nearby Share">Share…</button>
     <button id="sendzip" title="Put the files into one zip file you can attach, upload or copy to a stick">Save as one file</button>
     <button id="sendclose">Close</button></div>
   <div id="sendmsg" role="status" style="color:var(--mute)"></div>
   <div id="sendout"></div>
+</dialog>
+
+<dialog id="collbox" aria-labelledby="colltitle">
+  <h2 id="colltitle">Make a collage</h2>
+  <div class="path" id="collsrc"></div>
+  <fieldset><legend>Layout</legend><div id="colllay" role="radiogroup" aria-label="Collage layout"></div></fieldset>
+  <div class="row">
+    <label class="line">Shape<select id="collshape"><option value="portrait">Portrait 4:5 (Instagram post)</option><option value="square">Square 1:1</option>
+      <option value="vertical">Vertical 9:16 (Story)</option><option value="horizontal">Horizontal 16:9</option></select></label>
+    <label class="line" style="flex:1">Name for the picture (optional)<input id="collname" maxlength="50"></label>
+  </div>
+  <div class="row"><button class="primary" id="collgo">Make the collage</button><button id="collclose">Close</button>
+    <span id="collmsg" role="status" style="align-self:center;color:var(--mute)"></span></div>
+  <div id="collout"></div>
+</dialog>
+
+<dialog id="claudebox" aria-labelledby="claudetitle">
+  <h2 id="claudetitle">Tags from Claude</h2>
+  <div class="path">Claude Code looks at photos on this computer through your own Claude account and writes tags, a one-line caption and things like jersey numbers. Nothing extra to install and no key. The small copies in a batch are sent to Anthropic when Claude reads them, as with anything you show Claude.</div>
+  <div id="claudestate" role="status"></div>
+  <ol>
+    <li><div class="row" style="align-items:center"><label>How many <input id="clauden" type="number" min="1" max="200" value="40" style="width:80px"></label>
+      <button class="primary" id="claudelay">Lay out a batch</button></div>
+      <div class="path" id="claudewhich"></div></li>
+    <li>Open Claude Code in the Media Sorter folder and say: <b>tag my photos</b>. It reads the batch, looks at each picture and writes its answers.</li>
+    <li><button id="clauderead">Read in Claude's tags</button>
+      <div class="path">One Undo reverses the tags and categories. Claude does not work out who someone is from their face: it pins jersey numbers and printed names to faces, and the People list here does the rest.</div></li>
+  </ol>
+  <div class="row"><button id="claudeclose">Close</button><span id="claudemsg" role="status" style="align-self:center;color:var(--mute)"></span></div>
 </dialog>
 
 <dialog id="instabox" aria-labelledby="instatitle">
@@ -483,6 +550,28 @@ function pips(it) {
   return p;
 }
 
+// ----- favorites: a quick mark to find files again; taken off once they have been used -----
+const isFav = it => (it.tags || '').split('|').includes('favorite');
+async function fav(it) {
+  const on = !isFav(it);
+  try {
+    await api('/api/update', { ids: [it.id], add: on ? ['favorite'] : [], remove: on ? [] : ['favorite'] });
+    it.tags = [...(it.tags || '').split('|').filter(t => t && t !== 'favorite'), ...(on ? ['favorite'] : [])].join('|');
+    const el = document.querySelector(`.tile[data-id="${it.id}"] .fav`);
+    if (el) { el.classList.toggle('on', on); el.setAttribute('aria-pressed', on); }
+    refresh(false);
+  } catch (e) { toast(e.message); }
+  return on;
+}
+async function spent(ids) {   // after a video, collage, send or export: offer to take the mark off what was just used
+  try {
+    const marked = new Set(await api('/api/ids?tag=favorite')), used = ids.filter(id => marked.has(id));
+    if (used.length && confirm(`${used.length} of the files just used ${used.length === 1 ? 'is a favorite' : 'are favorites'}.\n\nTake the favorite mark off now that ${used.length === 1 ? 'it has' : 'they have'} been used?`)) {
+      await api('/api/update', { ids: used, remove: ['favorite'] }); refresh();
+    }
+  } catch (e) {}
+}
+
 function tile(it, i) {
   const many = it.stack > 1;
   const t = h('button', { class: 'tile' + (S.sel.has(it.id) ? ' sel' : '') + (many ? ' stack' : ''), 'data-id': it.id, draggable: true,
@@ -498,21 +587,28 @@ function tile(it, i) {
       many ? h('span', { class: 'badge count' }, `${it.stack} in sequence`) : it.grp ? h('span', { class: 'badge' }, 'Sequence') : null,
       it.kind === 'video' ? h('span', { class: 'badge' }, '▶ ' + clock(it.dur)) : null),
     h('span', { class: 'foot' }, pips(it), h('span', {}, it.category || '')),
-    h('span', { class: 'pick', role: 'checkbox', tabindex: 0, 'aria-checked': S.sel.has(it.id), 'aria-label': 'Select' }));
+    h('span', { class: 'pick', role: 'checkbox', tabindex: 0, 'aria-checked': S.sel.has(it.id), 'aria-label': 'Select' }),
+    many ? null : h('span', { class: 'fav' + (isFav(it) ? ' on' : ''), role: 'button', tabindex: 0, 'aria-pressed': String(isFav(it)), 'aria-label': 'Favorite', title: 'Favorite: mark to use later' }, '♥'));
   t.onclick = e => {
-    if (e.target.classList.contains('pick') || e.ctrlKey || e.metaKey || e.shiftKey) pick(i, e.shiftKey);
+    if (e.target.classList.contains('fav')) fav(it);
+    else if (e.target.classList.contains('pick') || e.ctrlKey || e.metaKey || e.shiftKey) pick(i, e.shiftKey);
     else if (many) go({ grp: String(it.grp) });
     else openViewer(i);
   };
-  t.onkeydown = e => { if (e.key === ' ') { e.preventDefault(); pick(i, e.shiftKey); } };
-  if (it.kind === 'video' && !it.err) {   // hover (or keyboard focus) plays a short silent preview
-    let timer, vid;
-    const start = () => { timer = setTimeout(() => {
-      vid = h('video', { src: `/preview/${it.id}`, muted: true, loop: true, playsinline: true });
-      vid.muted = true; t.insertBefore(vid, t.children[1]); vid.play().catch(() => {});
+  t.onkeydown = e => { if (e.key === ' ') { e.preventDefault(); pick(i, e.shiftKey); } else if (e.key.toLowerCase() === 'f' && !many) fav(it); };
+  if (it.kind === 'video' && !it.err) {   // hover (or keyboard focus) plays the whole video, silent and sped up; moving across the tile skips through it
+    let timer, vid, bar;
+    t.title = 'Move across the tile to skip through the video';
+    const start = () => { clearTimeout(timer); timer = setTimeout(() => {
+      if (vid) return;
+      vid = h('video', { src: `/preview/${it.id}`, muted: true, loop: true, playsinline: true }); bar = h('i', { class: 'scrub' });
+      vid.muted = true; vid.ontimeupdate = () => { if (vid && vid.duration) bar.style.width = vid.currentTime / vid.duration * 100 + '%'; };
+      t.insertBefore(vid, t.children[1]); t.append(bar); vid.play().catch(() => {});
     }, 250); };
-    const stop = () => { clearTimeout(timer); vid?.remove(); vid = null; };
+    const stop = () => { clearTimeout(timer); vid?.remove(); bar?.remove(); vid = bar = null; };
     t.onmouseenter = start; t.onmouseleave = stop; t.onfocus = start; t.onblur = stop;
+    t.onmousemove = e => { if (!vid || !vid.duration || !(e.movementX || e.movementY)) return;
+      const r = t.getBoundingClientRect(); vid.currentTime = Math.min(.999, Math.max(0, (e.clientX - r.left) / r.width)) * vid.duration; };
   }
   return t;
 }
@@ -571,7 +667,7 @@ async function refresh(reload = true) {
   const cats = new Map(st.all_categories.map(c => [c, 0])); st.categories.forEach(([c, n]) => cats.set(c, n));
   $('rail').replaceChildren(
     railButton('All media', all, { view: 'active', kind: '', cat: '', event: '', tag: '' }),
-    railButton('Photos', st.photos, { kind: 'photo' }), railButton('Videos', st.videos, { kind: 'video' }),
+    railButton('Photos', st.photos, { kind: 'photo' }), railButton('Videos', st.videos, { kind: 'video' }), railButton('♥ Favorites', st.favorites, { tag: 'favorite' }),
     ...st.posted.map(([t, n]) => railButton(t === 'posted' ? 'Already posted' : 'Posted on ' + t.slice(7), n, { tag: t })),
     h('h2', {}, 'Needs a decision'),
     railButton('Flagged low quality or duplicate', st.flagged, { view: 'flagged' }, st.flagged ? 'alert' : ''),
@@ -680,22 +776,23 @@ const SEND = { files: [], key: '' };
 $('send').onclick = $('psend').onclick = () => {
   const n = S.sel.size, share = !!(navigator.canShare && navigator.share);
   $('sendsrc').textContent = `${num(n)} file${n === 1 ? '' : 's'} from the project. Copies are sent; your library is not changed.`;
-  $('sendsize').value = mem('sendsize') || 'email';
+  $('sendsize').value = mem('sendsize') || 'email'; $('sendcropnote').hidden = !$('sendcrop').value;
   $('sendshare').hidden = !share;
   $('sendmsg').textContent = !share ? 'This browser has no share menu here. Use “Save as one file”, then attach that file to your email or message.'
     : n > 30 ? 'The share menu takes the first 30 files. For all of them, use “Save as one file”.' : '';
   $('sendout').replaceChildren(); $('sendbox').showModal();
 };
 $('sendsize').onchange = e => mem('sendsize', e.target.value);
+$('sendcrop').onchange = e => { $('sendcropnote').hidden = !e.target.value; };
 $('sendclose').onclick = () => $('sendbox').close();
 $('sendshare').onclick = async () => {
-  const ids = [...S.sel].slice(0, 30), size = $('sendsize').value, key = size + ids.join();
+  const ids = [...S.sel].slice(0, 30), size = $('sendsize').value, crop = $('sendcrop').value, key = size + crop + ids.join();
   try {
     if (SEND.key !== key) {  // fetch the copies once; a second press (see below) reuses them
       SEND.key = ''; SEND.files = [];
       for (const [i, id] of ids.entries()) {
         $('sendmsg').textContent = `Getting file ${i + 1} of ${ids.length} ready…`;
-        const r = await fetch(`/send/${id}?size=${size}`);
+        const r = await fetch(`/send/${id}?size=${size}&crop=${crop}`);
         if (!r.ok) continue;
         const name = decodeURIComponent((r.headers.get('Content-Disposition') || '').split("UTF-8''")[1] || `file ${i + 1}`), blob = await r.blob();
         SEND.files.push(new File([blob], name, { type: blob.type }));
@@ -705,7 +802,7 @@ $('sendshare').onclick = async () => {
     if (!SEND.files.length) throw new Error('None of these files could be read. Is their drive connected?');
     if (!navigator.canShare({ files: SEND.files })) throw new Error('This device cannot share these files. Use “Save as one file”.');
     await navigator.share({ files: SEND.files });
-    $('sendmsg').textContent = `${SEND.files.length} file${SEND.files.length === 1 ? '' : 's'} handed to the share menu.`;
+    $('sendmsg').textContent = `${SEND.files.length} file${SEND.files.length === 1 ? '' : 's'} handed to the share menu.`; spent(ids);
   } catch (e) {  // browsers only open the share menu straight after a press, and getting the files ready can outlast that
     $('sendmsg').textContent = e.name === 'AbortError' ? 'Share cancelled.'
       : e.name === 'NotAllowedError' ? 'The files are ready. Press Share once more. If nothing opens, use “Save as one file”.' : e.message;
@@ -714,7 +811,7 @@ $('sendshare').onclick = async () => {
 $('sendzip').onclick = async () => {
   $('sendmsg').textContent = 'Putting the files into one file…'; $('sendout').replaceChildren();
   try {
-    const r = await api('/api/send', { ids: [...S.sel], size: $('sendsize').value }), mb = r.bytes / 1048576;
+    const ids = [...S.sel], r = await api('/api/send', { ids, size: $('sendsize').value, crop: $('sendcrop').value }), mb = r.bytes / 1048576;
     $('sendmsg').textContent = `${num(r.files)} file${r.files === 1 ? '' : 's'}, ${mb.toFixed(1)} MB.`
       + (r.files < r.asked ? ` ${r.asked - r.files} could not be read and were left out.` : '')
       + (mb > 25 ? ' That is more than most email will carry (about 25 MB): choose Email size, send fewer, or upload the file to Google Drive and send its link.' : '');
@@ -724,7 +821,59 @@ $('sendzip').onclick = async () => {
         h('a', { href: '/sent/' + encodeURIComponent(r.name), download: r.name }, 'Download it to this device'),
         h('a', { href: `mailto:?subject=${encodeURIComponent(`${r.files} photos for you`)}&body=${encodeURIComponent('The photos are in the attached file.')}` }, 'Start an email')),
       h('div', { class: 'path' }, 'A web page cannot attach a file for you. Start the email, then drag the saved file onto it or use its paper-clip button.'));
+    spent(ids);
   } catch (e) { $('sendmsg').textContent = e.message; }
+};
+
+// ----- collage: the ticked photos as one picture -----
+$('mkcoll').onclick = async () => {
+  try {
+    const n = S.sel.size, lay = (await api('/api/templates')).collages || [];
+    $('collsrc').textContent = n ? `Using the ${num(n)} ticked file${n === 1 ? '' : 's'} in project order; videos are skipped. Each photo fills its space around its action point.`
+      : 'Tick the photos you want first: they fill the layout in project order.';
+    $('colllay').replaceChildren(...lay.map((t, k) => h('label', { class: t.cells.length > n ? 'short' : '', title: t.about },
+      h('input', { type: 'radio', name: 'coll', value: t.id, checked: k === Math.max(0, lay.findIndex(x => x.cells.length <= n && x.cells.length >= Math.min(n, 3))) }),
+      h('span', { class: 'mini', style: `background:${t.background || ''}` }, ...t.cells.map(([x, y, w, hh]) => h('i', { style: `left:${x * 100}%;top:${y * 100}%;width:${w * 100}%;height:${hh * 100}%` }))),
+      h('span', {}, t.name), h('small', {}, `${t.cells.length} photos`))));
+    $('collshape').value = mem('collshape') || 'portrait'; $('collmsg').textContent = ''; $('collout').replaceChildren(); $('collgo').disabled = !n;
+    $('collbox').showModal();
+  } catch (e) { toast(e.message); }
+};
+$('collclose').onclick = () => $('collbox').close();
+$('collgo').onclick = async () => {
+  $('collgo').disabled = true; $('collmsg').textContent = 'Making the collage…';
+  try {
+    const ids = [...S.sel], r = await api('/api/collage', { ids, layout: document.querySelector('input[name=coll]:checked').value,
+      shape: mem('collshape', $('collshape').value), name: $('collname').value }), url = '/collage/' + encodeURIComponent(r.file);
+    $('collmsg').textContent = `Done: ${r.photos} photos` + (r.left_over ? `; ${r.left_over} ticked ${r.left_over === 1 ? 'photo was' : 'photos were'} not needed.` : '.');
+    $('collout').replaceChildren(h('img', { src: url, alt: 'The finished collage' }),
+      h('div', { class: 'row', style: 'margin-top:8px' }, h('a', { href: url, download: r.file, class: 'chip', style: 'padding:8px 14px;color:inherit;text-decoration:none;border-color:var(--ball)' }, 'Download the picture')),
+      h('div', { class: 'path' }, `Also saved in ${r.folder}.`));
+    spent(ids);
+  } catch (e) { $('collmsg').textContent = e.message; }
+  $('collgo').disabled = false;
+};
+
+// ----- tags written by Claude Code -----
+function drawClaude(s) {
+  const n = S.sel.size;
+  $('claudestate').textContent = (s.ready ? 'Claude\'s tags are written and ready to read in. ' : s.waiting ? `A batch of ${num(s.waiting)} photos is laid out, waiting for Claude. ` : 'No batch is laid out. ')
+    + `${num(s.left)} photos have no caption yet.`;
+  $('claudelay').textContent = n ? `Lay out the ${num(Math.min(n, 200))} ticked` : 'Lay out a batch';
+  $('clauden').parentElement.hidden = !!n;
+  $('claudewhich').textContent = (n ? 'The ticked photos are used (videos are skipped).' : 'The best-scoring photos with no caption yet are used.') + ` Small copies go into ${s.folder}. Laying out a new batch replaces the last one.`;
+  $('clauderead').disabled = !s.ready;
+}
+$('claude').onclick = async () => { try { drawClaude(await api('/api/claude')); $('claudemsg').textContent = ''; $('claudebox').showModal(); } catch (e) { toast(e.message); } };
+$('claudeclose').onclick = () => $('claudebox').close();
+$('claudelay').onclick = async () => {
+  $('claudemsg').textContent = 'Laying out the photos…';
+  try { drawClaude(await api('/api/claude', { ids: [...S.sel], n: +$('clauden').value || 40 })); $('claudemsg').textContent = 'Ready. Now ask Claude Code: tag my photos.'; }
+  catch (e) { $('claudemsg').textContent = e.message; }
+};
+$('clauderead').onclick = async () => {
+  try { const r = await api('/api/claude', { read: true }); drawClaude(r); $('claudemsg').textContent = `Read in tags for ${num(r.changed)} photos.`; refresh(); }
+  catch (e) { $('claudemsg').textContent = e.message; }
 };
 
 // ----- photos already on Instagram -----
@@ -853,14 +1002,15 @@ async function showRandom() {
 $('bcat').onchange = e => { const v = e.target.value; if (v) act('update', { set: { category: v === '__none' ? null : v } }, v === '__none' ? 'Category cleared' : `Filed under ${v}`, v); e.target.value = ''; };
 $('btag').onkeydown = e => { if (e.key === 'Enter' && e.target.value.trim()) { act('update', { add: [e.target.value] }, `Tagged “${e.target.value.trim()}”`); e.target.value = ''; } };
 $('bevent').onkeydown = e => { if (e.key === 'Enter' && e.target.value.trim()) { act('update', { set: { event: e.target.value } }, 'Event set'); e.target.value = ''; } };
+$('bfav').onclick = () => act('update', { add: ['favorite'] }, 'Marked as favorites');
 $('export').onclick = async () => {
   const name = prompt(`Name for this export folder (${S.sel.size} files will be copied; your library is not changed):`, S.event || S.tag || S.cat || '');
   if (name == null) return;
   const hasVideo = S.items.some(it => S.sel.has(it.id) && it.kind === 'video');
   const trim = hasVideo && confirm('Cut the stretches where nothing happens out of the videos?\n\nOK: trimmed copies. Cancel: straight copies.');
   toast('Exporting…');
-  try { const r = await api('/api/export', { ids: [...S.sel], name, trim });
-    toast(`Exported ${num(r.files)} files${r.trimmed ? `, ${r.trimmed} trimmed` : ''}${r.edited ? `, ${r.edited} with your edits` : ''} to ${r.folder}`); }
+  try { const ids = [...S.sel], r = await api('/api/export', { ids, name, trim });
+    toast(`Exported ${num(r.files)} files${r.trimmed ? `, ${r.trimmed} trimmed` : ''}${r.edited ? `, ${r.edited} with your edits` : ''} to ${r.folder}`); spent(ids); }
   catch (e) { toast(e.message); }
 };
 $('toreview').onclick = () => act('review', {}, 'Moved to review folder', 'review');
@@ -878,13 +1028,13 @@ async function fly(ids, dest) {
   const tiles = ids.map(id => document.querySelector(`.tile[data-id="${id}"]`)).filter(Boolean)
     .filter(t => { const r = t.getBoundingClientRect(); return r.bottom > 0 && r.top < innerHeight; }).slice(0, 40);
   // The timeout matters: a background tab pauses animations, and a paused animation must never block the action.
-  await Promise.race([new Promise(r => setTimeout(r, 900)), Promise.all(tiles.map((t, i) => {
+  await Promise.race([new Promise(r => setTimeout(r, 220)), Promise.all(tiles.map((t, i) => {
     const r = t.getBoundingClientRect();
     return t.animate([{ transform: 'none', opacity: 1 },
       { transform: `translate(${to.left + 40 - r.left - r.width / 2}px, ${to.top - r.top - r.height / 2 + 14}px) scale(.08)`, opacity: .2 }],
-      { duration: 380, delay: Math.min(i * 18, 260), easing: 'cubic-bezier(.5,0,.75,0)', fill: 'forwards' }).finished;
+      { duration: 180, easing: 'cubic-bezier(.5,0,.75,0)', fill: 'forwards' }).finished;
   }))]);
-  target.animate([{ background: 'var(--ball)' }, { background: 'transparent' }], { duration: 500 });
+  target.animate([{ opacity: .4 }, { opacity: 1 }], { duration: 250 });
 }
 
 async function act(what, body, done, dest, ids = [...S.sel]) {
@@ -945,7 +1095,7 @@ $('reelgo').onclick = async () => {
       pick: $('reelpick').value, fresh: $('reelfresh').checked, name: $('reelname').value, ordered: true,
       shape: mem('shape', $('reelshape').value), move: $('reelmove').value });
     const url = '/reel/' + encodeURIComponent(r.file);
-    $('reelmsg').textContent = `Done: ${r.photos} photos.`;
+    $('reelmsg').textContent = `Done: ${r.photos} photos.`; spent([...S.sel]);
     $('reelout').replaceChildren(h('video', { src: url, controls: true, autoplay: true, loop: true, muted: true, playsinline: true }),
       h('div', { style: 'display:grid;gap:8px' }, h('a', { href: url, download: r.file, class: 'chip', style: 'padding:8px 14px;color:inherit;text-decoration:none;border-color:var(--ball)' }, 'Download the video'),
         h('div', { class: 'path' }, 'Also saved in exports/reels in the app folder. Make it again for a different mix.')));
@@ -1032,7 +1182,7 @@ function picRect(img) {   // where the picture itself sits inside its letterboxe
   const b = img.getBoundingClientRect(), r = (img.naturalWidth / img.naturalHeight) || 1.5, w = Math.min(b.width, b.height * r);
   return { x: b.left + (b.width - w) / 2, y: b.top + (b.height - w / r) / 2, w, h: w / r, r };
 }
-const ASPECT = { vertical: 9 / 16, horizontal: 16 / 9, square: 1 };
+const ASPECT = { vertical: 9 / 16, horizontal: 16 / 9, square: 1, portrait: 4 / 5 };
 function drawCrop(img, shape, fx, fy) {   // the bars darken what a video of this shape leaves out; the ring is the point it centres on
   const on = !!shape && img.isConnected;
   $('crop').hidden = $('dot').hidden = !on; img.classList.toggle('aim', on);
@@ -1094,7 +1244,7 @@ async function openViewer(i) {
     const across = range('Framing point, across', 0, 100), down = range('Framing point, down', 0, 100);
     const auto = h('button', { onclick: () => saveEdit({ point: null }).then(drawAim) }, 'Use the automatic point');
     const bars = h('select', { onchange: e => { mem('bars', e.target.value); drawAim(); } },
-      ...[['', 'Off'], ['vertical', 'Vertical 9:16'], ['horizontal', 'Horizontal 16:9'], ['square', 'Square 1:1']].map(([v, t]) =>
+      ...[['', 'Off'], ['vertical', 'Vertical 9:16'], ['horizontal', 'Horizontal 16:9'], ['square', 'Square 1:1'], ['portrait', 'Portrait 4:5']].map(([v, t]) =>
         h('option', { value: v, selected: v === (mem('bars') || '') }, t)));
     const drawAim = () => { const [fx, fy] = E.point || d.focus; across.value = fx * 100; down.value = fy * 100; auto.disabled = !E.point;
       S.aim = () => drawCrop(img, bars.value, fx, fy); S.aim(); };
@@ -1114,10 +1264,15 @@ async function openViewer(i) {
     const reset = h('button', { onclick: () => setLook({ auto: false, filter: '', bright: 1, contrast: 1, color: 1 }) }, 'Reset look');
     const drawLook = () => { balance.checked = !!E.look.auto; filt.value = E.look.filter || ''; reset.disabled = !Object.keys(E.look).length;
       for (const [k, , el] of dials) el.value = (E.look[k] || 1) * 100; };
+    const cropSel = h('select', { onchange: e => saveEdit({ crop: e.target.value }).then(() => { if (E.crop) { bars.value = E.crop; mem('bars', E.crop); } drawAim(); }) },
+      ...Object.entries(d.crops).map(([v, t]) => h('option', { value: v, selected: v === E.crop }, t)));
+    if (E.crop) bars.value = E.crop;   // a cropped photo opens showing its crop
     drawAim(); drawLook(); if (Object.keys(E.look).length) showLook();
-    tools.push(box('Framing for videos', h('label', {}, 'Crop bars for', bars),
-        h('div', { class: 'path' }, 'With the bars on, click the photo where the action is, or use the sliders. Videos keep that spot in frame.'),
-        h('label', {}, 'Across', across), h('label', {}, 'Down', down), h('div', { class: 'row' }, auto)),
+    tools.push(box('Framing and crop', h('label', {}, 'Show crop bars for', bars),
+        h('div', { class: 'path' }, 'With the bars on, click the photo where the action is, or use the sliders. Videos and crops keep that spot in frame.'),
+        h('label', {}, 'Across', across), h('label', {}, 'Down', down), h('div', { class: 'row' }, auto),
+        h('label', {}, 'Crop this photo to', cropSel),
+        h('div', { class: 'path' }, 'The suggested crop is the largest piece of that shape around the action point; the bars show it. Copies you send, export or save are cut this way. The original is not changed.')),
       box('Look', h('label', { class: 'tick' }, balance, 'Auto balance light and contrast'), h('label', {}, 'Filter', filt),
         ...dials.map(([, label, el]) => h('label', {}, label, el)),
         h('div', { class: 'row' }, reset, copy('Save an edited copy', 'Saving a copy…')),
@@ -1138,6 +1293,13 @@ async function openViewer(i) {
         : 'No pieces marked yet, so the whole video is kept.';
     };
     drawKeep();
+    const rate = v => { vid.playbackRate = v; mem('speed', v); speeds.forEach(b => b.setAttribute('aria-pressed', +b.dataset.v === v)); };
+    const speeds = [0.5, 1, 1.5, 2, 4].map(v => h('button', { class: 'chip', 'data-v': v, onclick: () => rate(v) }, v + '×'));
+    const quiet = h('input', { type: 'checkbox', checked: mem('quiet') === '1', onchange: e => { vid.muted = e.target.checked; mem('quiet', e.target.checked ? '1' : '0'); } });
+    vid.muted = quiet.checked; rate(+mem('speed') || 1);
+    tools.push(box('Playback', h('div', { class: 'row', role: 'group', 'aria-label': 'Playback speed' }, ...speeds),
+      h('label', { class: 'tick' }, quiet, 'Sound off'),
+      h('div', { class: 'path' }, 'Click or drag the bar under the video to skip to any point.')));
     tools.push(box('Trim and cut',
       h('div', { class: 'path' }, 'Play to a spot and mark it. The pieces you keep are joined into a new video; the original is not changed.'),
       h('div', { class: 'row' }, h('button', { onclick: () => { from = vid.currentTime; drawKeep(); } }, 'Piece starts here'),
@@ -1174,11 +1336,12 @@ async function openViewer(i) {
       h('button', { onclick: () => api('/api/open', { ids: [it.id] }).catch(e => toast(e.message)) }, 'Open in default app'),
       h('button', { onclick: () => { S.sel.has(it.id) ? S.sel.delete(it.id) : S.sel.add(it.id); paintSel(); openViewer(i); } },
         S.sel.has(it.id) ? 'Remove from project' : 'Add to project'),
+      h('button', { 'aria-pressed': String(isFav(it)), title: 'Mark to find and use later (F)', onclick: () => fav(it).then(() => openViewer(i)) }, isFav(it) ? '♥ Favorite: remove' : '♥ Favorite'),
       S.randomMode ? h('button', { class: 'primary', onclick: showRandom }, 'Another random one') : null,
       d.grp ? h('button', { onclick: () => { v.close(); go({ grp: String(d.grp) }); } }, 'Show whole sequence') : null),
     d.related.length ? h('div', {}, h('div', { style: 'margin-bottom:6px' }, d.grp ? 'Same sequence and event' : 'Best from this event'),
       h('div', { id: 'related' }, ...d.related.map(r => h('button', { 'aria-label': `Open related ${r.kind}`, onclick: () => jump(r.id) }, h('img', { src: `/thumb/${r.id}`, alt: '', loading: 'lazy' }))))) : null,
-    h('div', { class: 'path' }, h('kbd', {}, '←'), ' ', h('kbd', {}, '→'), ' browse, ', h('kbd', {}, '0'), '–', h('kbd', {}, '5'), ' rate, ', h('kbd', {}, 'X'), ' review folder, ', h('kbd', {}, 'Esc'), ' close'));
+    h('div', { class: 'path' }, h('kbd', {}, '←'), ' ', h('kbd', {}, '→'), ' browse, ', h('kbd', {}, '0'), '–', h('kbd', {}, '5'), ' rate, ', h('kbd', {}, 'F'), ' favorite, ', h('kbd', {}, 'X'), ' review folder, ', h('kbd', {}, 'Esc'), ' close'));
 }
 function jump(id) {
   const j = S.items.findIndex(x => x.id === id);
@@ -1202,6 +1365,7 @@ addEventListener('keydown', e => {
   if (e.key === 'ArrowRight') openViewer(S.open + 1);
   else if (e.key === 'ArrowLeft') openViewer(S.open - 1);
   else if (/^[0-5]$/.test(e.key)) act('update', { set: { user_score: +e.key } }, `Rated ${e.key}`, null, [it.id]).then(() => openViewer(Math.min(S.open + 1, S.items.length - 1)));
+  else if (e.key.toLowerCase() === 'f') fav(it).then(() => openViewer(S.open));
   else if (e.key.toLowerCase() === 'x' && it.status === 'active') { const i = S.open; act('review', {}, 'Moved to review folder', 'review', [it.id]).then(() => S.items.length ? openViewer(Math.min(i, S.items.length - 1)) : $('viewer').close()); }
 });
 
